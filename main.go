@@ -3,74 +3,84 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"log"
+	"os"
+	"path/filepath"
 	"unsafe"
 
 	"github.com/JamesHovious/w32"
 	"github.com/getlantern/systray"
-	"golang.design/x/hotkey/mainthread"
 )
 
 const (
-	Context w32.DWORD = 27
-	Escape  w32.DWORD = 93
+	Context = 27
+	Escape  = 93
 )
 
 var (
-	keyboard w32.HHOOK
-	mouse    w32.HHOOK
-
-	queue []byte
-
-	// Ctrl + Alt + L
-	LockHotkey = []byte{162, 164, 76}
-
-	// Type "unlock"
-	UnlockHotkey = []byte{85, 78, 76, 79, 67, 75}
-
 	//go:embed asset/lock.ico
 	lock []byte
 
 	//go:embed asset/unlock.ico
 	unlock []byte
-
-	//go:embed rsrc_windows_amd64.syso
-	resource []byte
 )
 
-func listener(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT {
+type Locker struct {
+	LockHotkey   []byte
+	UnlockHotkey []byte
+	keyboard     w32.HHOOK
+	mouse        w32.HHOOK
+	queue        []byte
+	lock         *[]byte
+	unlock       *[]byte
+	resource     []byte
+}
+
+func NewLocker() *Locker {
+	return &Locker{
+		LockHotkey:   []byte{162, 164, 76},
+		UnlockHotkey: []byte{85, 78, 76, 79, 67, 75},
+		lock:         &lock,
+		unlock:       &unlock,
+	}
+}
+
+func (locker *Locker) listener(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT {
 	switch wparam {
 	case
 		w32.WPARAM(w32.WM_KEYDOWN),
 		w32.WPARAM(w32.WM_SYSKEYDOWN):
 
-		message := unsafe.Pointer(lparam)
-		kbdstruct := (*w32.KBDLLHOOKSTRUCT)(message)
+		var message unsafe.Pointer = unsafe.Pointer(lparam)
+		var kbdstruct *w32.KBDLLHOOKSTRUCT = (*w32.KBDLLHOOKSTRUCT)(message)
 
 		var key byte = byte(kbdstruct.VkCode)
 
-		if len(queue) == 3 {
-			queue = queue[1:]
+		if len(locker.queue) == 3 {
+			locker.queue = locker.queue[1:]
 		}
 
-		queue = append(queue, key)
+		locker.queue = append(locker.queue, key)
 
-		if bytes.Equal(queue, LockHotkey) {
-			systray.SetIcon(lock)
+		if bytes.Equal(locker.queue, locker.LockHotkey) {
+			log.Println("Locking...")
 
-			w32.UnhookWindowsHookEx(keyboard)
+			systray.SetIcon(*locker.lock)
 
-			queue = nil
+			w32.UnhookWindowsHookEx(locker.keyboard)
 
-			keyboard = w32.SetWindowsHookEx(
+			locker.queue = nil
+
+			locker.keyboard = w32.SetWindowsHookEx(
 				w32.WH_KEYBOARD_LL,
-				w32.HOOKPROC(blockKeyboard),
+				w32.HOOKPROC(locker.blockKeyboard),
 				0,
 				0,
 			)
 
-			mouse = w32.SetWindowsHookEx(
+			locker.mouse = w32.SetWindowsHookEx(
 				w32.WH_MOUSE_LL,
-				w32.HOOKPROC(blockMouse),
+				w32.HOOKPROC(locker.blockMouse),
 				0,
 				0,
 			)
@@ -78,14 +88,14 @@ func listener(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT 
 	}
 
 	return w32.CallNextHookEx(
-		w32.HHOOK(keyboard),
+		w32.HHOOK(locker.keyboard),
 		identifier,
 		wparam,
 		lparam,
 	)
 }
 
-func blockMouse(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT {
+func (locker *Locker) blockMouse(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT {
 	switch wparam {
 	case
 		w32.WPARAM(w32.WM_LBUTTONDOWN),
@@ -104,14 +114,14 @@ func blockMouse(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESUL
 	}
 
 	return w32.CallNextHookEx(
-		w32.HHOOK(mouse),
+		w32.HHOOK(locker.mouse),
 		identifier,
 		wparam,
 		lparam,
 	)
 }
 
-func blockKeyboard(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT {
+func (locker *Locker) blockKeyboard(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT {
 	switch wparam {
 	case
 		w32.WPARAM(w32.WM_KEYDOWN),
@@ -122,8 +132,8 @@ func blockKeyboard(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRE
 		w32.WPARAM(w32.WM_KEYUP),
 		w32.WPARAM(w32.WM_SYSKEYUP):
 
-		message := unsafe.Pointer(lparam)
-		kbdstruct := (*w32.KBDLLHOOKSTRUCT)(message)
+		var message unsafe.Pointer = unsafe.Pointer(lparam)
+		var kbdstruct *w32.KBDLLHOOKSTRUCT = (*w32.KBDLLHOOKSTRUCT)(message)
 
 		// Disable the esc and context menu
 		if kbdstruct.VkCode == Escape || kbdstruct.VkCode == Context {
@@ -132,29 +142,31 @@ func blockKeyboard(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRE
 
 		var key byte = byte(kbdstruct.VkCode)
 
-		if len(queue) == 6 {
-			queue = queue[1:]
+		if len(locker.queue) == 6 {
+			locker.queue = locker.queue[1:]
 		}
 
-		queue = append(queue, key)
+		locker.queue = append(locker.queue, key)
 
-		if bytes.Equal(queue, UnlockHotkey) {
-			systray.SetIcon(unlock)
+		if bytes.Equal(locker.queue, locker.UnlockHotkey) {
+			log.Println("Unlocking...")
 
-			w32.UnhookWindowsHookEx(keyboard)
-			w32.UnhookWindowsHookEx(mouse)
+			systray.SetIcon(*locker.unlock)
 
-			queue = nil
+			w32.UnhookWindowsHookEx(locker.keyboard)
+			w32.UnhookWindowsHookEx(locker.mouse)
 
-			keyboard = w32.SetWindowsHookEx(
+			locker.queue = nil
+
+			locker.keyboard = w32.SetWindowsHookEx(
 				w32.WH_KEYBOARD_LL,
-				w32.HOOKPROC(listener),
+				w32.HOOKPROC(locker.listener),
 				0,
 				0,
 			)
 
 			return w32.CallNextHookEx(
-				w32.HHOOK(keyboard),
+				w32.HHOOK(locker.keyboard),
 				identifier,
 				wparam,
 				lparam,
@@ -170,15 +182,17 @@ func blockKeyboard(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRE
 	}
 
 	return w32.CallNextHookEx(
-		w32.HHOOK(keyboard),
+		w32.HHOOK(locker.keyboard),
 		identifier,
 		wparam,
 		lparam,
 	)
 }
 
-func onReady() {
-	systray.SetIcon(unlock)
+func (locker *Locker) onReady() {
+	log.Println("Starting...")
+
+	systray.SetIcon(*locker.unlock)
 	systray.SetTitle("Peripheral Locker")
 	systray.SetTooltip("Peripheral Locker")
 	quit := systray.AddMenuItem("Quit", "Quit")
@@ -188,20 +202,22 @@ func onReady() {
 		systray.Quit()
 	}()
 
-	mainthread.Init(start)
+	locker.run()
 }
 
-func onExit() {
-	w32.UnhookWindowsHookEx(keyboard)
-	w32.UnhookWindowsHookEx(mouse)
+func (locker *Locker) onExit() {
+	log.Println("Exiting...")
+
+	w32.UnhookWindowsHookEx(locker.keyboard)
+	w32.UnhookWindowsHookEx(locker.mouse)
 }
 
-func start() {
-	queue = make([]byte, 0, 6)
+func (locker *Locker) run() {
+	locker.queue = make([]byte, 0, 6)
 
-	keyboard = w32.SetWindowsHookEx(
+	locker.keyboard = w32.SetWindowsHookEx(
 		w32.WH_KEYBOARD_LL,
-		w32.HOOKPROC(listener),
+		w32.HOOKPROC(locker.listener),
 		0,
 		0,
 	)
@@ -215,5 +231,28 @@ func start() {
 }
 
 func main() {
-	systray.Run(onReady, onExit)
+	var err error
+
+	var configuration, _ = os.UserConfigDir()
+	var home = filepath.Join(configuration, "locker")
+	var path = filepath.Join(home, "locker.log")
+
+	if err = os.MkdirAll(home, os.ModeDir); err != nil {
+		log.Fatalln(err)
+	}
+
+	file, err := os.OpenFile(
+		path,
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+		0666,
+	)
+
+	if err != nil {
+		log.Println(err)
+	}
+
+	log.SetOutput(file)
+
+	var locker *Locker = NewLocker()
+	systray.Run(locker.onReady, locker.onExit)
 }

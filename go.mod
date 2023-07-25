@@ -4,8 +4,8 @@ go 1.20
 
 require (
 	github.com/JamesHovious/w32 v1.2.0
-	github.com/getlantern/systray v1.2.1
-	github.com/tc-hib/winres v0.1.6
+	github.com/getlantern/systray v1.2.2
+	github.com/tc-hib/winres v0.2.0
 	golang.design/x/hotkey v0.4.1
 )
 
@@ -20,6 +20,6 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	golang.design/x/mainthread v0.3.0 // indirect
-	golang.org/x/image v0.0.0-20201208152932-35266b937fa6 // indirect
-	golang.org/x/sys v0.0.0-20201022201747-fb209a7c41cd // indirect
+	golang.org/x/image v0.1.0 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 )
