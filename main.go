@@ -31,8 +31,8 @@ type Locker struct {
 	keyboard     w32.HHOOK
 	mouse        w32.HHOOK
 	queue        []byte
-	lock         *[]byte
-	unlock       *[]byte
+	lock         []byte
+	unlock       []byte
 	resource     []byte
 }
 
@@ -40,8 +40,8 @@ func NewLocker() *Locker {
 	return &Locker{
 		LockHotkey:   []byte{162, 164, 76},
 		UnlockHotkey: []byte{85, 78, 76, 79, 67, 75},
-		lock:         &lock,
-		unlock:       &unlock,
+		lock:         lock,
+		unlock:       unlock,
 	}
 }
 
@@ -65,7 +65,7 @@ func (locker *Locker) listener(identifier int, wparam w32.WPARAM, lparam w32.LPA
 		if bytes.Equal(locker.queue, locker.LockHotkey) {
 			log.Println("Locking...")
 
-			systray.SetIcon(*locker.lock)
+			systray.SetIcon(locker.lock)
 
 			w32.UnhookWindowsHookEx(locker.keyboard)
 
@@ -151,7 +151,7 @@ func (locker *Locker) blockKeyboard(identifier int, wparam w32.WPARAM, lparam w3
 		if bytes.Equal(locker.queue, locker.UnlockHotkey) {
 			log.Println("Unlocking...")
 
-			systray.SetIcon(*locker.unlock)
+			systray.SetIcon(locker.unlock)
 
 			w32.UnhookWindowsHookEx(locker.keyboard)
 			w32.UnhookWindowsHookEx(locker.mouse)
@@ -192,7 +192,7 @@ func (locker *Locker) blockKeyboard(identifier int, wparam w32.WPARAM, lparam w3
 func (locker *Locker) onReady() {
 	log.Println("Starting...")
 
-	systray.SetIcon(*locker.unlock)
+	systray.SetIcon(locker.unlock)
 	systray.SetTitle("Peripheral Locker")
 	systray.SetTooltip("Peripheral Locker")
 	quit := systray.AddMenuItem("Quit", "Quit")
