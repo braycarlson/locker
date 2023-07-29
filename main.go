@@ -63,11 +63,17 @@ func (locker *Locker) listener(identifier int, wparam w32.WPARAM, lparam w32.LPA
 		locker.queue = append(locker.queue, key)
 
 		if bytes.Equal(locker.queue, locker.LockHotkey) {
-			log.Println("Locking...")
+			log.Println("Attempting to lock...")
 
 			systray.SetIcon(locker.lock)
 
-			w32.UnhookWindowsHookEx(locker.keyboard)
+			var status bool = w32.UnhookWindowsHookEx(locker.keyboard)
+
+			if status {
+				log.Println("Success: Deregistered the keyboard hook")
+			} else {
+				log.Println("Failure: Unable to deregister the keyboard hook.")
+			}
 
 			locker.queue = nil
 
@@ -78,21 +84,35 @@ func (locker *Locker) listener(identifier int, wparam w32.WPARAM, lparam w32.LPA
 				0,
 			)
 
+			if locker.keyboard == 0 {
+				log.Println("Failure: Unable to register the keyboard hook.")
+			} else {
+				log.Println("Success: Registered the keyboard hook")
+			}
+
 			locker.mouse = w32.SetWindowsHookEx(
 				w32.WH_MOUSE_LL,
 				w32.HOOKPROC(locker.blockMouse),
 				0,
 				0,
 			)
+
+			if locker.mouse == 0 {
+				log.Println("Failure: Unable to register the mouse hook.")
+			} else {
+				log.Println("Success: Registered the mouse hook")
+			}
 		}
 	}
 
-	return w32.CallNextHookEx(
+	var result w32.LRESULT = w32.CallNextHookEx(
 		w32.HHOOK(locker.keyboard),
 		identifier,
 		wparam,
 		lparam,
 	)
+
+	return result
 }
 
 func (locker *Locker) blockMouse(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT {
@@ -111,14 +131,20 @@ func (locker *Locker) blockMouse(identifier int, wparam w32.WPARAM, lparam w32.L
 		w32.WPARAM(w32.WM_XBUTTONUP):
 
 		return 1
+	case
+		w32.WPARAM(w32.WM_MOUSEWHEEL):
+
+		return 1
 	}
 
-	return w32.CallNextHookEx(
+	var result w32.LRESULT = w32.CallNextHookEx(
 		w32.HHOOK(locker.mouse),
 		identifier,
 		wparam,
 		lparam,
 	)
+
+	return result
 }
 
 func (locker *Locker) blockKeyboard(identifier int, wparam w32.WPARAM, lparam w32.LPARAM) w32.LRESULT {
@@ -149,12 +175,31 @@ func (locker *Locker) blockKeyboard(identifier int, wparam w32.WPARAM, lparam w3
 		locker.queue = append(locker.queue, key)
 
 		if bytes.Equal(locker.queue, locker.UnlockHotkey) {
-			log.Println("Unlocking...")
+			log.Println("Attempting to unlock...")
 
 			systray.SetIcon(locker.unlock)
 
-			w32.UnhookWindowsHookEx(locker.keyboard)
-			w32.UnhookWindowsHookEx(locker.mouse)
+			var status bool = false
+
+			status = w32.UnhookWindowsHookEx(locker.keyboard)
+
+			if status {
+				locker.keyboard = 0
+
+				log.Println("Success: Deregistered the keyboard hook")
+			} else {
+				log.Println("Failure: Unable to deregister the keyboard hook.")
+			}
+
+			status = w32.UnhookWindowsHookEx(locker.mouse)
+
+			if status {
+				locker.mouse = 0
+
+				log.Println("Success: Deregistered the mouse hook")
+			} else {
+				log.Println("Failure: Unable to deregister the mouse hook.")
+			}
 
 			locker.queue = nil
 
@@ -165,28 +210,40 @@ func (locker *Locker) blockKeyboard(identifier int, wparam w32.WPARAM, lparam w3
 				0,
 			)
 
-			return w32.CallNextHookEx(
+			if locker.keyboard == 0 {
+				log.Println("Failure: Unable to register the keyboard hook.")
+			} else {
+				log.Println("Success: Registered the keyboard hook")
+			}
+
+			var result w32.LRESULT = w32.CallNextHookEx(
 				w32.HHOOK(locker.keyboard),
 				identifier,
 				wparam,
 				lparam,
 			)
+
+			return result
 		}
 
-		return w32.CallNextHookEx(
+		var result w32.LRESULT = w32.CallNextHookEx(
 			w32.WM_NULL,
 			identifier,
 			wparam,
 			lparam,
 		)
+
+		return result
 	}
 
-	return w32.CallNextHookEx(
+	var result w32.LRESULT = w32.CallNextHookEx(
 		w32.HHOOK(locker.keyboard),
 		identifier,
 		wparam,
 		lparam,
 	)
+
+	return result
 }
 
 func (locker *Locker) onReady() {
@@ -208,8 +265,25 @@ func (locker *Locker) onReady() {
 func (locker *Locker) onExit() {
 	log.Println("Exiting...")
 
-	w32.UnhookWindowsHookEx(locker.keyboard)
-	w32.UnhookWindowsHookEx(locker.mouse)
+	if locker.keyboard > 0 {
+		log.Println("Attempting to unhook keyboard...")
+
+		if w32.UnhookWindowsHookEx(locker.keyboard) {
+			log.Println("Success: Unhooking keyboard on exit")
+		} else {
+			log.Println("Failure: Unhooking keyboard on exit.")
+		}
+	}
+
+	if locker.mouse > 0 {
+		log.Println("Attempting to unhook mouse...")
+
+		if w32.UnhookWindowsHookEx(locker.mouse) {
+			log.Println("Success: Unhooking mouse on exit")
+		} else {
+			log.Println("Failure: Unhooking mouse on exit.")
+		}
+	}
 }
 
 func (locker *Locker) run() {
@@ -221,6 +295,8 @@ func (locker *Locker) run() {
 		0,
 		0,
 	)
+
+	log.Println("Entering message loop...")
 
 	var message w32.MSG
 
