@@ -329,6 +329,8 @@ func main() {
 
 	log.SetOutput(file)
 
+	defer file.Close()
+
 	var locker *Locker = NewLocker()
 	systray.Run(locker.onReady, locker.onExit)
 }
