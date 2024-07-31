@@ -19,8 +19,9 @@ import (
 import "C"
 
 const (
-	Context = 27
-	Escape  = 93
+	Context = 93
+	Escape  = 27
+	Space   = 32
 )
 
 var (
@@ -44,6 +45,7 @@ var (
 	keypressEvent = map[w32.DWORD]bool{
 		Escape:  true,
 		Context: true,
+		Space:   true,
 	}
 
 	//go:embed asset/lock.ico
@@ -103,8 +105,13 @@ func GoKeyboardProc(nCode C.int, wParam C.WPARAM, lParam C.LPARAM) C.LRESULT {
 			}
 		}
 
-		if locker.isLocked && keyboardEvent[wParam] {
-			return 1
+		if locker.isLocked {
+			var message unsafe.Pointer = unsafe.Pointer(uintptr(lParam))
+			var kbdstruct *w32.KBDLLHOOKSTRUCT = (*w32.KBDLLHOOKSTRUCT)(message)
+
+			if keypressEvent[kbdstruct.VkCode] || keyboardEvent[wParam] {
+				return 1
+			}
 		}
 	}
 
