@@ -1,0 +1,16 @@
+pub const LockerError = error{
+    AllocationFailed,
+    ArenaInitFailed,
+    EmptyBuffer,
+    HookFailed,
+    IconLoadFailed,
+    InvalidCapacity,
+    LogOpenFailed,
+    MenuCreationFailed,
+    ModuleHandleNotFound,
+    NullCallback,
+    PatternTooLarge,
+    TrayIconCreationFailed,
+    WindowCreationFailed,
+    WindowRegistrationFailed,
+};

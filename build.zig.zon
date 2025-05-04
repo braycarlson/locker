@@ -1,0 +1,16 @@
+.{
+    .name = .locker,
+    .version = "0.1.0",
+    .fingerprint = 0x1e067dc034737415,
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .zigwin32 = .{
+            .url = "https://github.com/marlersoft/zigwin32/archive/refs/heads/main.tar.gz",
+            .hash = "zigwin32-25.0.28-preview-AAAAAI0J-wP-8_KKo4Yjr33XLhVhlJmeagGUedByaOnX",
+        },
+    },
+}
