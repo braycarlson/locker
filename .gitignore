@@ -1,13 +1,12 @@
 # locker
-.zig-cache/
-zig-out/
+asset/*.ico
+asset/*.png
+asset/*.svg
 
 # Binaries for programs and plugins
 *.exe
 *.exe~
 *.dll
-*.rc
-*.res
 *.so
 *.dylib
 
