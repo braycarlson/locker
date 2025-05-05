@@ -1,0 +1,5 @@
+#include "../include/resource.h"
+
+MAINICON        ICON                   "../res/unlock.ico"
+IDR_LOCK_ICON   ICON    DISCARDABLE    "../res/lock.ico"
+IDR_UNLOCK_ICON ICON    DISCARDABLE    "../res/unlock.ico"
