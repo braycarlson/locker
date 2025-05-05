@@ -6,7 +6,6 @@ zig-out/
 *.exe
 *.exe~
 *.dll
-*.rc
 *.res
 *.so
 *.dylib
