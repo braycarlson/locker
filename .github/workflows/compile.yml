@@ -28,7 +28,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p output
-          zig build -Doptimize=ReleaseSmall -target x86_64-windows src/main.zig -femit-bin=output/${{ env.PROJECT }}_windows_${{ steps.version.outputs.new_version }}.exe
+          zig build -Dtarget=x86_64-windows -Doptimize=ReleaseSmall
+          cp zig-out/bin/locker.exe output/${{ env.PROJECT_NAME }}_windows_${{ steps.version.outputs.new_version }}.exe
 
       - name: Verify Executable Exists
         shell: bash
