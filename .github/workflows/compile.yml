@@ -1,0 +1,58 @@
+name: Build Executable for Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PROJECT: locker
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.0
+
+      - name: Get Version from Release Tag
+        id: version
+        shell: bash
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+
+      - name: Build Zig Executable
+        shell: bash
+        run: |
+          mkdir -p output
+          zig build -Doptimize=ReleaseSmall -target x86_64-windows src/main.zig -femit-bin=output/${{ env.PROJECT }}_windows_${{ steps.version.outputs.new_version }}.exe
+
+      - name: Verify Executable Exists
+        shell: bash
+        run: |
+          FILE="output/${{ env.PROJECT }}_windows_${{ steps.version.outputs.new_version }}.exe"
+
+          if [ -f "$FILE" ]; then
+            echo "Executable exists: $FILE"
+          else
+            echo "Executable not found: $FILE"
+            exit 1
+          fi
+
+      - name: Upload Executable as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: executable-windows
+          path: output/${{ env.PROJECT }}_windows_${{ steps.version.outputs.new_version }}.exe
+          retention-days: 1
+
+      - name: Upload Executable to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: output/${{ env.PROJECT }}_windows_${{ steps.version.outputs.new_version }}.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

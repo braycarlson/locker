@@ -51,6 +51,7 @@ pub const Window = struct {
         for (text16[0..limit], 0..) |char, i| {
             data.szTip[i] = char;
         }
+
         data.szTip[limit] = 0;
 
         if (w32.Shell_NotifyIconW(w32.NIM_ADD, &data) == 0)
@@ -64,6 +65,7 @@ pub const Window = struct {
         data.uID = 1;
         data.uFlags = .{ .ICON = 1 };
         data.hIcon = icon;
+
         _ = w32.Shell_NotifyIconW(w32.NIM_MODIFY, &data);
     }
 
@@ -72,6 +74,7 @@ pub const Window = struct {
         data.cbSize = @sizeOf(w32.NOTIFYICONDATAW);
         data.hWnd = self.handle;
         data.uID = 1;
+
         _ = w32.Shell_NotifyIconW(w32.NIM_DELETE, &data);
     }
 };
