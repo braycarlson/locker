@@ -1,9 +1,7 @@
 name: Build Executable for Release
-
 on:
   release:
     types: [created]
-
 jobs:
   build:
     runs-on: windows-latest
@@ -12,7 +10,6 @@ jobs:
       PROJECT: locker
     steps:
       - uses: actions/checkout@v3
-
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
@@ -29,12 +26,12 @@ jobs:
         run: |
           mkdir -p output
           zig build -Dtarget=x86_64-windows -Doptimize=ReleaseSmall
-          cp zig-out/bin/locker.exe output/${{ env.PROJECT_NAME }}_windows_${{ steps.version.outputs.new_version }}.exe
+          cp zig-out/bin/locker.exe output/${{ env.PROJECT }}_${{ steps.version.outputs.new_version }}.exe
 
       - name: Verify Executable Exists
         shell: bash
         run: |
-          FILE="output/${{ env.PROJECT }}_windows_${{ steps.version.outputs.new_version }}.exe"
+          FILE="output/${{ env.PROJECT }}_${{ steps.version.outputs.new_version }}.exe"
 
           if [ -f "$FILE" ]; then
             echo "Executable exists: $FILE"
@@ -47,13 +44,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: executable-windows
-          path: output/${{ env.PROJECT }}_windows_${{ steps.version.outputs.new_version }}.exe
+          path: output/${{ env.PROJECT }}_${{ steps.version.outputs.new_version }}.exe
           retention-days: 1
 
       - name: Upload Executable to Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: output/${{ env.PROJECT }}_windows_${{ steps.version.outputs.new_version }}.exe
+          files: output/${{ env.PROJECT }}_${{ steps.version.outputs.new_version }}.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
