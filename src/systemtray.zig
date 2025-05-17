@@ -13,6 +13,7 @@ pub const SystemTray = struct {
     icon: Icon,
     isLocked: bool = false,
     isTimerActive: bool = false,
+    isTaskbarCreated: u32 = 0,
 
     pub fn init(memory: std.mem.Allocator, title: []const u8, state: bool) !*SystemTray {
         var self = try memory.create(SystemTray);
@@ -21,6 +22,9 @@ pub const SystemTray = struct {
         self.icon = .{};
         try self.icon.init();
         self.isLocked = state;
+
+        const message = std.unicode.utf8ToUtf16LeStringLiteral("TaskbarCreated");
+        self.isTaskbarCreated = w32.RegisterWindowMessageW(message);
 
         self.window = try Window.create(windowProc);
 
@@ -60,6 +64,26 @@ pub const SystemTray = struct {
         try callback.setRefreshHook(handler);
     }
 
+    pub fn setKeyboardLockedCallback(self: *SystemTray, handler: *const fn (bool) void) !void {
+        _ = self;
+        try callback.setKeyboardLockedCallback(handler);
+    }
+
+    pub fn setMouseLockedCallback(self: *SystemTray, handler: *const fn (bool) void) !void {
+        _ = self;
+        try callback.setMouseLockedCallback(handler);
+    }
+
+    pub fn setIsKeyboardLockedCallback(self: *SystemTray, handler: *const fn () bool) !void {
+        _ = self;
+        try callback.setIsKeyboardLockedCallback(handler);
+    }
+
+    pub fn setIsMouseLockedCallback(self: *SystemTray, handler: *const fn () bool) !void {
+        _ = self;
+        try callback.setIsMouseLockedCallback(handler);
+    }
+
     fn showMenu(self: *SystemTray) void {
         var point: w32.POINT = undefined;
         if (w32.GetCursorPos(&point) == 0) return;
@@ -69,12 +93,24 @@ pub const SystemTray = struct {
 
         const unlock: [:0]const u16 = std.unicode.utf8ToUtf16LeStringLiteral("Unlock");
         const lock: [:0]const u16 = std.unicode.utf8ToUtf16LeStringLiteral("Lock");
+        const keyboard: [:0]const u16 = std.unicode.utf8ToUtf16LeStringLiteral("Keyboard");
+        const mouse: [:0]const u16 = std.unicode.utf8ToUtf16LeStringLiteral("Mouse");
         const quit: [:0]const u16 = std.unicode.utf8ToUtf16LeStringLiteral("Exit");
 
         const label = if (self.isLocked) unlock else lock;
 
         if (w32.InsertMenuW(menu, 0, w32.MENU_ITEM_FLAGS{ .BYPOSITION = 1 }, constants.MenuIdentifier.TOGGLE, label) == 0) return;
-        if (w32.InsertMenuW(menu, 1, w32.MENU_ITEM_FLAGS{ .BYPOSITION = 1 }, constants.MenuIdentifier.EXIT, quit) == 0) return;
+
+        var keyboard_flags = w32.MENU_ITEM_FLAGS{ .BYPOSITION = 1 };
+        if (callback.invokeIsKeyboardLocked()) keyboard_flags.CHECKED = 1;
+        if (w32.InsertMenuW(menu, 1, keyboard_flags, constants.MenuIdentifier.TOGGLE_KEYBOARD, keyboard) == 0) return;
+
+        var mouse_flags = w32.MENU_ITEM_FLAGS{ .BYPOSITION = 1 };
+        if (callback.invokeIsMouseLocked()) mouse_flags.CHECKED = 1;
+        if (w32.InsertMenuW(menu, 2, mouse_flags, constants.MenuIdentifier.TOGGLE_MOUSE, mouse) == 0) return;
+
+        if (w32.InsertMenuW(menu, 3, w32.MENU_ITEM_FLAGS{ .BYPOSITION = 1, .SEPARATOR = 1 }, 0, null) == 0) return;
+        if (w32.InsertMenuW(menu, 4, w32.MENU_ITEM_FLAGS{ .BYPOSITION = 1 }, constants.MenuIdentifier.EXIT, quit) == 0) return;
 
         _ = w32.SetForegroundWindow(self.window.handle);
 
@@ -83,6 +119,17 @@ pub const SystemTray = struct {
 
         switch (command) {
             constants.MenuIdentifier.TOGGLE => self.setLocked(!self.isLocked),
+
+            constants.MenuIdentifier.TOGGLE_KEYBOARD => {
+                const current = callback.invokeIsKeyboardLocked();
+                callback.invokeSetKeyboardLocked(!current);
+            },
+
+            constants.MenuIdentifier.TOGGLE_MOUSE => {
+                const current = callback.invokeIsMouseLocked();
+                callback.invokeSetMouseLocked(!current);
+            },
+
             constants.MenuIdentifier.EXIT => _ = w32.PostQuitMessage(0),
             else => {},
         }
@@ -97,6 +144,11 @@ pub const SystemTray = struct {
         const pointer: usize = @intCast(address);
         const tray: *SystemTray = @ptrFromInt(pointer);
 
+        if (message == tray.isTaskbarCreated) {
+            tray.window.createTrayIcon(tray.icon.current(tray.isLocked), "Peripheral Locker") catch {};
+            return 0;
+        }
+
         switch (message) {
             constants.WM_TRAYICON => {
                 switch (lparam) {
@@ -104,12 +156,14 @@ pub const SystemTray = struct {
                     w32.WM_LBUTTONUP => tray.setLocked(!tray.isLocked),
                     else => {},
                 }
+
                 return 0;
             },
             w32.WM_TIMER => {
                 if (wparam == constants.Timer.REHOOK_ID) {
                     callback.invokeRefreshHook();
                 }
+
                 return 0;
             },
             w32.WM_DESTROY => {

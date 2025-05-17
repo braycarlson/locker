@@ -11,6 +11,8 @@ pub const Hotkey = struct {
 pub const MenuIdentifier = struct {
     pub const TOGGLE = 1001;
     pub const EXIT = 1002;
+    pub const TOGGLE_KEYBOARD = 1003;
+    pub const TOGGLE_MOUSE = 1004;
 };
 
 pub const ResourceIdentifier = struct {

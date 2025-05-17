@@ -39,7 +39,7 @@ export fn keyboardProc(code: c_int, wparam: w32.WPARAM, lparam: w32.LPARAM) call
             }
         }
 
-        if (locker.state.isLocked()) {
+        if (locker.state.isLocked() and locker.isKeyboardLocked) {
             const address: usize = @intCast(lparam);
             const event: *w32.KBDLLHOOKSTRUCT = @ptrFromInt(address);
 
@@ -55,13 +55,17 @@ export fn keyboardProc(code: c_int, wparam: w32.WPARAM, lparam: w32.LPARAM) call
 }
 
 export fn mouseProc(code: c_int, wparam: w32.WPARAM, lparam: w32.LPARAM) callconv(.C) w32.LRESULT {
-    if (code >= 0 and locker.state.isLocked()) {
+    if (code >= 0 and locker.state.isLocked() and locker.isMouseLocked) {
         if (constants.Mouse.isBlockedMessage(wparam)) {
             return 1;
         }
     }
 
     return hook.callNextHookEx(code, wparam, lparam);
+}
+
+fn setHook() bool {
+    return locker.setHook();
 }
 
 fn onTrayToggle(isLocked: bool) void {
@@ -72,21 +76,22 @@ fn onRefreshHook() void {
     locker.refreshHook();
 }
 
-fn setHook() bool {
-    const handle = hook.getModuleHandle();
+fn onKeyboardLocked(isLocked: bool) void {
+    locker.isKeyboardLocked = isLocked;
+    locker.refreshHook();
+}
 
-    hook.setKeyboardProc(&keyboardProc);
-    hook.setMouseProc(&mouseProc);
+fn onMouseLocked(isLocked: bool) void {
+    locker.isMouseLocked = isLocked;
+    locker.refreshHook();
+}
 
-    if (!hook.setKeyboardHook(handle)) {
-        return false;
-    }
+fn isKeyboardLocked() bool {
+    return locker.isKeyboardLocked;
+}
 
-    if (!hook.setMouseHook(handle)) {
-        return false;
-    }
-
-    return true;
+fn isMouseLocked() bool {
+    return locker.isMouseLocked;
 }
 
 pub const Locker = struct {
@@ -95,6 +100,8 @@ pub const Locker = struct {
     logger: Logger,
     tray: *SystemTray,
     allocator: std.mem.Allocator,
+    isKeyboardLocked: bool = true,
+    isMouseLocked: bool = true,
 
     pub fn init(allocator: std.mem.Allocator) !*Locker {
         var self = try allocator.create(Locker);
@@ -113,6 +120,10 @@ pub const Locker = struct {
         self.tray = try SystemTray.init(allocator, "Peripheral Locker", self.state.isLocked());
         try self.tray.setToggleLockCallback(onTrayToggle);
         try self.tray.setRefreshHookCallback(onRefreshHook);
+        try self.tray.setKeyboardLockedCallback(onKeyboardLocked);
+        try self.tray.setMouseLockedCallback(onMouseLocked);
+        try self.tray.setIsKeyboardLockedCallback(isKeyboardLocked);
+        try self.tray.setIsMouseLockedCallback(isMouseLocked);
 
         self.tray.setLocked(self.state.isLocked());
 
@@ -147,13 +158,34 @@ pub const Locker = struct {
         }
     }
 
+    fn setHook(self: *Locker) bool {
+        const handle = hook.getModuleHandle();
+        var success = true;
+
+        hook.setKeyboardProc(&keyboardProc);
+
+        if (!hook.setKeyboardHook(handle)) {
+            success = false;
+            self.logError("Failed to set keyboard hook", error.HookFailed);
+        }
+
+        if (self.isMouseLocked) {
+            hook.setMouseProc(&mouseProc);
+
+            if (!hook.setMouseHook(handle)) {
+                success = false;
+                self.logError("Failed to set mouse hook", error.HookFailed);
+            }
+        }
+
+        return success;
+    }
+
     fn refreshHook(self: *Locker) void {
         hook.removeHook();
 
         if (self.state.isLocked()) {
-            if (!setHook()) {
-                self.logError("Failed to set hooks", error.HookFailed);
-            }
+            _ = self.setHook();
         } else {
             const handle = hook.getModuleHandle();
             hook.setKeyboardProc(&keyboardProc);
@@ -171,9 +203,7 @@ pub const Locker = struct {
         hook.removeHook();
 
         if (state.isLocked()) {
-            if (!setHook()) {
-                self.logError("Failed to set hooks", error.HookFailed);
-            }
+            _ = self.setHook();
         } else {
             const handle = hook.getModuleHandle();
             hook.setKeyboardProc(&keyboardProc);
