@@ -3,7 +3,7 @@ const w32 = @import("win32").everything;
 
 const LockerError = @import("error.zig").LockerError;
 
-pub const HookProc = fn (c_int, w32.WPARAM, w32.LPARAM) callconv(.C) w32.LRESULT;
+pub const HookProc = fn (c_int, w32.WPARAM, w32.LPARAM) callconv(.c) w32.LRESULT;
 
 pub export var hKeyboardHook: ?w32.HHOOK = null;
 pub export var hMouseHook: ?w32.HHOOK = null;

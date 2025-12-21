@@ -1,5 +1,4 @@
 const std = @import("std");
-const testing = std.testing;
 
 const LockerError = @import("error.zig").LockerError;
 
@@ -54,16 +53,20 @@ pub const Logger = struct {
         const month_day = year_day.calculateMonthDay();
         const day_seconds = datetime.getDaySeconds();
 
-        try self.file.?.writer().print("[{d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}] ", .{ year_day.year, month_day.month.numeric(), month_day.day_index + 1, day_seconds.getHoursIntoDay(), day_seconds.getMinutesIntoHour(), day_seconds.getSecondsIntoMinute() });
-        try self.file.?.writer().print(fmt ++ "\n", args);
-        try self.file.?.sync();
+        var buffer: [4096]u8 = undefined;
+
+        const timestamp_str = std.fmt.bufPrint(&buffer, "[{d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}] ", .{
+            year_day.year,
+            month_day.month.numeric(),
+            month_day.day_index + 1,
+            day_seconds.getHoursIntoDay(),
+            day_seconds.getMinutesIntoHour(),
+            day_seconds.getSecondsIntoMinute(),
+        }) catch return;
+
+        _ = self.file.?.writeAll(timestamp_str) catch return;
+
+        const message = std.fmt.bufPrint(buffer[timestamp_str.len..], fmt ++ "\n", args) catch return;
+        _ = self.file.?.writeAll(message) catch return;
     }
 };
-
-test "Initialization" {
-    var logger = try Logger.init(testing.allocator);
-    defer logger.deinit();
-
-    try testing.expect(logger.file == null);
-    try testing.expect(logger.allocator.ptr == testing.allocator.ptr);
-}

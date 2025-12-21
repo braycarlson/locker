@@ -20,7 +20,7 @@ pub const LockerState = enum {
 
 var locker: *Locker = undefined;
 
-export fn keyboardProc(code: c_int, wparam: w32.WPARAM, lparam: w32.LPARAM) callconv(.C) w32.LRESULT {
+export fn keyboardProc(code: c_int, wparam: w32.WPARAM, lparam: w32.LPARAM) callconv(.c) w32.LRESULT {
     if (code >= 0) {
         if (wparam == w32.WM_KEYDOWN or wparam == w32.WM_SYSKEYDOWN) {
             const address: usize = @intCast(lparam);
@@ -54,7 +54,7 @@ export fn keyboardProc(code: c_int, wparam: w32.WPARAM, lparam: w32.LPARAM) call
     return hook.callNextHookEx(code, wparam, lparam);
 }
 
-export fn mouseProc(code: c_int, wparam: w32.WPARAM, lparam: w32.LPARAM) callconv(.C) w32.LRESULT {
+export fn mouseProc(code: c_int, wparam: w32.WPARAM, lparam: w32.LPARAM) callconv(.c) w32.LRESULT {
     if (code >= 0 and locker.state.isLocked() and locker.isMouseLocked) {
         if (constants.Mouse.isBlockedMessage(wparam)) {
             return 1;

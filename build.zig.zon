@@ -10,7 +10,7 @@
     .dependencies = .{
         .zigwin32 = .{
             .url = "https://github.com/marlersoft/zigwin32/archive/refs/heads/main.tar.gz",
-            .hash = "zigwin32-25.0.28-preview-AAAAAI0J-wP-8_KKo4Yjr33XLhVhlJmeagGUedByaOnX",
+            .hash = "zigwin32-25.0.28-preview-AAAAAICM5AMResOGQnQ85mfe60TTOQeMtt7GRATUOKoP",
         },
     },
 }

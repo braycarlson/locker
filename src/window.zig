@@ -6,7 +6,7 @@ const hook = @import("hook.zig");
 
 const LockerError = @import("error.zig").LockerError;
 
-pub const SystemTrayProc = fn (w32.HWND, u32, w32.WPARAM, w32.LPARAM) callconv(.C) w32.LRESULT;
+pub const SystemTrayProc = fn (w32.HWND, u32, w32.WPARAM, w32.LPARAM) callconv(.c) w32.LRESULT;
 
 pub const Window = struct {
     handle: w32.HWND,

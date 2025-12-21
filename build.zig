@@ -17,27 +17,34 @@ pub fn build(builder: *std.Build) void {
         "--output-format=coff",
     });
 
-    const hook = builder.addSharedLibrary(.{
-        .name = "hook",
+    const hook_mod = builder.createModule(.{
         .root_source_file = builder.path("src/hook.zig"),
         .target = target,
         .optimize = optimize,
     });
+    hook_mod.addImport("win32", win32_mod);
 
-    hook.root_module.addImport("win32", win32_mod);
+    const hook = builder.addLibrary(.{
+        .name = "hook",
+        .linkage = .dynamic,
+        .root_module = hook_mod,
+    });
 
     hook.linkLibC();
     hook.linkSystemLibrary("user32");
     builder.installArtifact(hook);
 
-    const exe = builder.addExecutable(.{
-        .name = "locker",
+    const exe_mod = builder.createModule(.{
         .root_source_file = builder.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
+    exe_mod.addImport("win32", win32_mod);
 
-    exe.root_module.addImport("win32", win32_mod);
+    const exe = builder.addExecutable(.{
+        .name = "locker",
+        .root_module = exe_mod,
+    });
 
     exe.addObjectFile(builder.path("locker.res"));
     exe.step.dependOn(&resources.step);

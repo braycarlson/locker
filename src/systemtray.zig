@@ -137,7 +137,7 @@ pub const SystemTray = struct {
         _ = w32.PostMessageW(self.window.handle, 0, 0, 0);
     }
 
-    pub fn windowProc(window: w32.HWND, message: u32, wparam: w32.WPARAM, lparam: w32.LPARAM) callconv(.C) w32.LRESULT {
+    pub fn windowProc(window: w32.HWND, message: u32, wparam: w32.WPARAM, lparam: w32.LPARAM) callconv(.c) w32.LRESULT {
         const address: isize = w32.GetWindowLongPtrW(window, w32.GWLP_USERDATA);
         if (address == 0) return w32.DefWindowProcW(window, message, wparam, lparam);
 
