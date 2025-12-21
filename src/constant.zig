@@ -1,6 +1,3 @@
-const std = @import("std");
-const testing = std.testing;
-
 const w32 = @import("win32").everything;
 
 pub const Hotkey = struct {
@@ -8,14 +5,14 @@ pub const Hotkey = struct {
     pub const unlock: []const u8 = &[_]u8{ 85, 78, 76, 79, 67, 75 };
 };
 
-pub const MenuIdentifier = struct {
+pub const Menu = struct {
     pub const TOGGLE = 1001;
     pub const EXIT = 1002;
     pub const TOGGLE_KEYBOARD = 1003;
     pub const TOGGLE_MOUSE = 1004;
 };
 
-pub const ResourceIdentifier = struct {
+pub const Resource = struct {
     pub const LOCK_ICON = 101;
     pub const UNLOCK_ICON = 102;
 };
@@ -32,28 +29,28 @@ pub const VirtualKey = enum(u32) {
 };
 
 pub const Keyboard = struct {
-    pub const KEYS = [_]u32{
+    const BLOCKED_KEYS = [_]u32{
         @intFromEnum(VirtualKey.context),
         @intFromEnum(VirtualKey.escape),
         @intFromEnum(VirtualKey.space),
     };
 
+    const BLOCKED_MESSAGES = [_]u32{
+        w32.WM_KEYDOWN,
+        w32.WM_SYSKEYDOWN,
+    };
+
     pub fn isBlockedKey(key: u32) bool {
-        inline for (KEYS) |blockable| {
-            if (key == blockable) return true;
+        inline for (BLOCKED_KEYS) |blocked| {
+            if (key == blocked) return true;
         }
 
         return false;
     }
 
-    pub const MESSAGES = [_]u32{
-        w32.WM_KEYDOWN,
-        w32.WM_SYSKEYDOWN,
-    };
-
     pub fn isBlockedMessage(message: usize) bool {
-        inline for (MESSAGES) |blockable| {
-            if (@as(u32, @truncate(message)) == blockable) return true;
+        inline for (BLOCKED_MESSAGES) |blocked| {
+            if (@as(u32, @truncate(message)) == blocked) return true;
         }
 
         return false;
@@ -61,7 +58,7 @@ pub const Keyboard = struct {
 };
 
 pub const Mouse = struct {
-    pub const MESSAGES = [_]u32{
+    const BLOCKED_MESSAGES = [_]u32{
         w32.WM_LBUTTONDOWN,
         w32.WM_MBUTTONDOWN,
         w32.WM_RBUTTONDOWN,
@@ -74,9 +71,10 @@ pub const Mouse = struct {
     };
 
     pub fn isBlockedMessage(message: usize) bool {
-        inline for (MESSAGES) |blocked_msg| {
-            if (@as(u32, @truncate(message)) == blocked_msg) return true;
+        inline for (BLOCKED_MESSAGES) |blocked| {
+            if (@as(u32, @truncate(message)) == blocked) return true;
         }
+
         return false;
     }
 };

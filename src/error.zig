@@ -1,6 +1,5 @@
 pub const LockerError = error{
     AllocationFailed,
-    ArenaInitFailed,
     EmptyBuffer,
     HookFailed,
     IconLoadFailed,
@@ -8,7 +7,6 @@ pub const LockerError = error{
     LogOpenFailed,
     MenuCreationFailed,
     ModuleHandleNotFound,
-    NullCallback,
     PatternTooLarge,
     TrayIconCreationFailed,
     WindowCreationFailed,

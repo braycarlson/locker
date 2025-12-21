@@ -1,40 +1,40 @@
-const std = @import("std");
 const w32 = @import("win32").everything;
 
-const constants = @import("constants.zig");
-const hook = @import("hook.zig");
-
-const LockerError = @import("error.zig").LockerError;
+const constant = @import("constant.zig");
+const win32 = @import("win32.zig");
 
 pub const Icon = struct {
     lock: ?w32.HICON = null,
     unlock: ?w32.HICON = null,
 
-    pub fn init(self: *Icon) !void {
-        const hmod = hook.getModuleHandle();
+    pub fn init(self: *Icon) void {
+        const instance = win32.getModuleHandle();
 
-        self.lock = @ptrCast(w32.LoadImageW(hmod, @ptrFromInt(@as(usize, constants.ResourceIdentifier.LOCK_ICON)), w32.IMAGE_ICON, 0, 0, w32.LR_DEFAULTCOLOR));
-        if (self.lock == null) self.lock = w32.LoadIconW(null, w32.IDI_SHIELD);
-
-        self.unlock = @ptrCast(w32.LoadImageW(hmod, @ptrFromInt(@as(usize, constants.ResourceIdentifier.UNLOCK_ICON)), w32.IMAGE_ICON, 0, 0, w32.LR_DEFAULTCOLOR));
-        if (self.unlock == null) self.unlock = w32.LoadIconW(null, w32.IDI_APPLICATION);
-
-        if (self.lock == null or self.unlock == null) return LockerError.IconLoadFailed;
-    }
-
-    pub fn current(self: *Icon, locked: bool) w32.HICON {
-        return if (locked) self.lock.? else self.unlock.?;
+        self.lock = loadIconWithFallback(instance, constant.Resource.LOCK_ICON, w32.IDI_SHIELD);
+        self.unlock = loadIconWithFallback(instance, constant.Resource.UNLOCK_ICON, w32.IDI_APPLICATION);
     }
 
     pub fn deinit(self: *Icon) void {
-        if (self.lock) |h| {
-            _ = w32.DestroyIcon(h);
-            self.lock = null;
-        }
+        win32.destroyIcon(self.lock);
+        win32.destroyIcon(self.unlock);
+        self.lock = null;
+        self.unlock = null;
+    }
 
-        if (self.unlock) |h| {
-            _ = w32.DestroyIcon(h);
-            self.unlock = null;
-        }
+    pub fn current(self: *const Icon, locked: bool) ?w32.HICON {
+        return if (locked) self.lock else self.unlock;
+    }
+
+    fn loadIconWithFallback(instance: w32.HINSTANCE, resourceId: usize, fallback: anytype) ?w32.HICON {
+        const icon: ?w32.HICON = @ptrCast(w32.LoadImageW(
+            instance,
+            @ptrFromInt(resourceId),
+            w32.IMAGE_ICON,
+            0,
+            0,
+            w32.LR_DEFAULTCOLOR,
+        ));
+
+        return icon orelse w32.LoadIconW(null, fallback);
     }
 };
