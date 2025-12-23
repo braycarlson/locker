@@ -4,7 +4,14 @@ pub fn build(builder: *std.Build) void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
+    const toolkit = builder.dependency("toolkit", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const win32 = builder.dependency("zigwin32", .{});
+
+    const toolkit_module = toolkit.module("toolkit");
     const win32_module = win32.module("win32");
 
     const resources = builder.addSystemCommand(&[_][]const u8{
@@ -23,6 +30,7 @@ pub fn build(builder: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe_module.addImport("toolkit", toolkit_module);
     exe_module.addImport("win32", win32_module);
 
     const exe = builder.addExecutable(.{
@@ -45,10 +53,13 @@ pub fn build(builder: *std.Build) void {
     const test_step = builder.step("test", "Run unit tests");
 
     const test_module = builder.createModule(.{
-        .root_source_file = builder.path("src/harness.zig"),
+        .root_source_file = builder.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
+
+    test_module.addImport("toolkit", toolkit_module);
+    test_module.addImport("win32", win32_module);
 
     const unit_tests = builder.addTest(.{
         .root_module = test_module,

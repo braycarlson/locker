@@ -1,6 +1,6 @@
 .{
     .name = .locker,
-    .version = "0.1.0",
+    .version = "0.0.3",
     .fingerprint = 0x1e067dc034737415,
     .paths = .{
         "src",
@@ -8,6 +8,7 @@
         "build.zig.zon",
     },
     .dependencies = .{
+        .toolkit = .{ .url = "https://github.com/braycarlson/toolkit/archive/refs/heads/main.tar.gz", .hash = "toolkit-0.1.0-Zq_UaAPfAAB0Ib1SXQWuTjYMtC1hwfWV_CDTppeDnfnj" },
         .zigwin32 = .{
             .url = "https://github.com/marlersoft/zigwin32/archive/refs/heads/main.tar.gz",
             .hash = "zigwin32-25.0.28-preview-AAAAAICM5AMResOGQnQ85mfe60TTOQeMtt7GRATUOKoP",
