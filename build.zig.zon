@@ -1,6 +1,6 @@
 .{
     .name = .locker,
-    .version = "0.1.0",
+    .version = "0.0.4",
     .fingerprint = 0x1e067dc034737415,
     .paths = .{
         "src",
@@ -8,6 +8,20 @@
         "build.zig.zon",
     },
     .dependencies = .{
+        // .nimble = .{
+        //     .path = "../nimble",
+        // },
+        .nimble = .{
+            .url = "https://github.com/braycarlson/nimble/archive/refs/heads/main.tar.gz",
+            .hash = "nimble-0.0.1-WsPw0rMUDwA8T7lIL4TmksbPB3QGukSDX7Q-FK5rLSqD",
+        },
+        // .wisp = .{
+        //     .path = "../wisp",
+        // },
+        .wisp = .{
+            .url = "https://github.com/braycarlson/wisp/archive/refs/heads/main.tar.gz",
+            .hash = "wisp-0.0.1-NPtSMlc6AwBbboMD2zQsgZb3oMIcty8bGbksG6DKjg2m",
+        },
         .zigwin32 = .{
             .url = "https://github.com/marlersoft/zigwin32/archive/refs/heads/main.tar.gz",
             .hash = "zigwin32-25.0.28-preview-AAAAAICM5AMResOGQnQ85mfe60TTOQeMtt7GRATUOKoP",
