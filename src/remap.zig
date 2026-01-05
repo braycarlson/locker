@@ -1,191 +1,140 @@
 const std = @import("std");
 
-const toolkit = @import("toolkit");
+const nimble = @import("nimble");
+
+const keycode = nimble.keycode;
+const modifier = nimble.modifier;
+const sender = nimble.sender.key;
 
 const Config = @import("config.zig").Config;
-const KeyCombination = @import("config.zig").KeyCombination;
+const Combination = @import("config.zig").Combination;
 const Logger = @import("logger.zig").Logger;
 
-const modifier_count: u32 = 4;
-
 pub const Remap = struct {
-    config: *Config,
-    logger: *?Logger,
+    configuration: *Config,
+    logger: ?*Logger,
     shortcut_invoked: bool = false,
 
-    pub fn init(cfg: *Config, logger: *?Logger) Remap {
-        std.debug.assert(cfg.remap_count <= Config.remap_max);
-        std.debug.assert(cfg.disabled_count <= Config.disabled_max);
-
-        return .{
-            .config = cfg,
+    pub fn init(configuration: *Config, logger: ?*Logger) Remap {
+        return Remap{
+            .configuration = configuration,
             .logger = logger,
         };
     }
 
-    fn handleWindowsKey(self: *Remap, code: u32, is_down: bool) ?u32 {
-        std.debug.assert(isWindowsKey(code));
-        std.debug.assert(code > 0);
+    pub fn process(self: *Remap, value: u8, is_down: bool, extra: usize) ?u32 {
+        std.debug.assert(keycode.is_valid(value));
 
-        if (is_down) {
-            self.shortcut_invoked = false;
+        if (extra == sender.marker_injected) {
             return null;
         }
 
-        std.debug.assert(!is_down);
+        if (is_win_key(value)) {
+            return self.handle_win_key(value, is_down);
+        }
 
-        if (!self.shortcut_invoked) {
+        if (!is_down or keycode.is_modifier(value)) {
             return null;
         }
 
-        std.debug.assert(self.shortcut_invoked);
+        const current = modifier.Set.poll();
 
-        self.shortcut_invoked = false;
-        toolkit.input.Sender.suppressKey(code);
-
-        return 0;
-    }
-
-    pub fn process(self: *Remap, code: u32, is_down: bool, extra_info: usize) ?u32 {
-        std.debug.assert(code > 0);
-        std.debug.assert(self.config.remap_count <= Config.remap_max);
-        std.debug.assert(self.config.disabled_count <= Config.disabled_max);
-
-        if (extra_info == toolkit.input.injected_flag) {
+        if (!current.win()) {
             return null;
         }
 
-        if (isWindowsKey(code)) {
-            return self.handleWindowsKey(code, is_down);
-        }
-
-        if (!is_down) {
-            return null;
-        }
-
-        if (toolkit.input.isModifierKey(code)) {
-            return null;
-        }
-
-        const modifier = toolkit.input.ModifierSet.poll();
-
-        if (!modifier.win) {
-            return null;
-        }
-
-        std.debug.assert(modifier.win);
-
-        if (self.config.isDisabled(code, modifier)) {
+        if (self.configuration.is_disabled(value, &current)) {
             self.shortcut_invoked = true;
-
-            if (self.logger.*) |*l| {
-                l.log("Blocked a disabled shortcut", .{});
-            }
-
+            self.log("Blocked a disabled shortcut");
             return 0;
         }
 
-        if (self.config.findRemapEntry(code, modifier)) |entry| {
-            std.debug.assert(entry.from.key > 0);
-            std.debug.assert(entry.to.key > 0);
-
+        if (self.configuration.find_remap_entry(value, &current)) |entry| {
             self.shortcut_invoked = true;
-
-            if (self.logger.*) |*l| {
-                l.log("Remapped a shortcut", .{});
-            }
-
-            sendRemappedShortcut(entry.from, entry.to);
-
+            self.log("Remapped a shortcut");
+            send_remapped_shortcut(&entry.from, &entry.to);
             return 0;
         }
 
         return null;
     }
+
+    fn handle_win_key(self: *Remap, value: u8, is_down: bool) ?u32 {
+        if (is_down) {
+            self.shortcut_invoked = false;
+            return null;
+        }
+
+        if (!self.shortcut_invoked) {
+            return null;
+        }
+
+        self.shortcut_invoked = false;
+
+        _ = sender.suppress(value);
+
+        return 0;
+    }
+
+    fn log(self: *Remap, message: []const u8) void {
+        if (self.logger) |logger| {
+            logger.log("{s}", .{message});
+        }
+    }
 };
 
-fn isModifierInSet(array: [4]?toolkit.input.Modifier, target: toolkit.input.Modifier) bool {
-    var index: u32 = 0;
-
-    while (index < modifier_count) : (index += 1) {
-        std.debug.assert(index < modifier_count);
-
-        if (array[index]) |mod| {
-            if (mod == target) {
+fn is_modifier_in_set(array: *const [modifier.kind_count]?modifier.Kind, target: modifier.Kind) bool {
+    for (array) |item| {
+        if (item) |modifier_kind| {
+            if (modifier_kind == target) {
                 return true;
             }
         }
     }
 
-    std.debug.assert(index == modifier_count);
-
     return false;
 }
 
-fn isWindowsKey(code: u32) bool {
-    std.debug.assert(code > 0);
-
-    return code == toolkit.input.VirtualKey.lwin or
-        code == toolkit.input.VirtualKey.rwin;
+fn is_win_key(value: u8) bool {
+    return value == keycode.lwin or value == keycode.rwin;
 }
 
-fn sendRemappedShortcut(from: KeyCombination, to: KeyCombination) void {
-    std.debug.assert(from.key > 0);
-    std.debug.assert(to.key > 0);
+fn send_remapped_shortcut(from: *const Combination, to: *const Combination) void {
+    std.debug.assert(from.is_valid());
+    std.debug.assert(to.is_valid());
 
-    const from_array = from.modifier.toArray();
-    const to_array = to.modifier.toArray();
+    const from_array = from.modifier_set.to_array();
+    const to_array = to.modifier_set.to_array();
 
-    toolkit.input.Sender.dummy();
+    _ = sender.dummy();
 
-    var index: u32 = 0;
-
-    while (index < modifier_count) : (index += 1) {
-        std.debug.assert(index < modifier_count);
-
-        if (from_array[index]) |mod| {
-            if (!isModifierInSet(to_array, mod)) {
-                toolkit.input.Sender.keyUp(mod.toVirtualKey());
+    for (0..modifier.kind_count) |i| {
+        if (from_array[i]) |modifier_kind| {
+            if (!is_modifier_in_set(&to_array, modifier_kind)) {
+                _ = sender.key_up(modifier_kind.to_keycode());
             }
         }
     }
 
-    std.debug.assert(index == modifier_count);
-
-    index = 0;
-
-    while (index < modifier_count) : (index += 1) {
-        std.debug.assert(index < modifier_count);
-
-        if (to_array[index]) |mod| {
-            if (!isModifierInSet(from_array, mod)) {
-                toolkit.input.Sender.keyDown(mod.toVirtualKey());
+    for (0..modifier.kind_count) |i| {
+        if (to_array[i]) |modifier_kind| {
+            if (!is_modifier_in_set(&from_array, modifier_kind)) {
+                _ = sender.key_down(modifier_kind.to_keycode());
             }
         }
     }
 
-    std.debug.assert(index == modifier_count);
+    _ = sender.press(to.value);
 
-    toolkit.input.Sender.key(to.key);
+    var release_index: usize = modifier.kind_count;
 
-    var release: u32 = modifier_count;
-    var iteration: u32 = 0;
+    while (release_index > 0) {
+        release_index -= 1;
 
-    while (release > 0) : (release -= 1) {
-        std.debug.assert(iteration < modifier_count);
-
-        const idx = release - 1;
-
-        std.debug.assert(idx < modifier_count);
-
-        if (to_array[idx]) |mod| {
-            if (!isModifierInSet(from_array, mod)) {
-                toolkit.input.Sender.keyUp(mod.toVirtualKey());
+        if (to_array[release_index]) |modifier_kind| {
+            if (!is_modifier_in_set(&from_array, modifier_kind)) {
+                _ = sender.key_up(modifier_kind.to_keycode());
             }
         }
-
-        iteration += 1;
     }
-
-    std.debug.assert(iteration == modifier_count);
 }
