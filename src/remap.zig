@@ -4,7 +4,7 @@ const nimble = @import("nimble");
 
 const keycode = nimble.keycode;
 const modifier = nimble.modifier;
-const sender = nimble.sender.key;
+const simulate = nimble.simulate.key;
 
 const Config = @import("config.zig").Config;
 const Combination = @import("config.zig").Combination;
@@ -25,7 +25,7 @@ pub const Remap = struct {
     pub fn process(self: *Remap, value: u8, is_down: bool, extra: usize) ?u32 {
         std.debug.assert(keycode.is_valid(value));
 
-        if (extra == sender.marker_injected) {
+        if (extra == simulate.marker_injected) {
             return null;
         }
 
@@ -71,7 +71,7 @@ pub const Remap = struct {
 
         self.shortcut_invoked = false;
 
-        _ = sender.suppress(value);
+        _ = simulate.suppress(value);
 
         return 0;
     }
@@ -106,12 +106,12 @@ fn send_remapped_shortcut(from: *const Combination, to: *const Combination) void
     const from_array = from.modifier_set.to_array();
     const to_array = to.modifier_set.to_array();
 
-    _ = sender.dummy();
+    _ = simulate.dummy();
 
     for (0..modifier.kind_count) |i| {
         if (from_array[i]) |modifier_kind| {
             if (!is_modifier_in_set(&to_array, modifier_kind)) {
-                _ = sender.key_up(modifier_kind.to_keycode());
+                _ = simulate.key_up(modifier_kind.to_keycode());
             }
         }
     }
@@ -119,12 +119,12 @@ fn send_remapped_shortcut(from: *const Combination, to: *const Combination) void
     for (0..modifier.kind_count) |i| {
         if (to_array[i]) |modifier_kind| {
             if (!is_modifier_in_set(&from_array, modifier_kind)) {
-                _ = sender.key_down(modifier_kind.to_keycode());
+                _ = simulate.key_down(modifier_kind.to_keycode());
             }
         }
     }
 
-    _ = sender.press(to.value);
+    _ = simulate.press(to.value);
 
     var release_index: usize = modifier.kind_count;
 
@@ -133,7 +133,7 @@ fn send_remapped_shortcut(from: *const Combination, to: *const Combination) void
 
         if (to_array[release_index]) |modifier_kind| {
             if (!is_modifier_in_set(&from_array, modifier_kind)) {
-                _ = sender.key_up(modifier_kind.to_keycode());
+                _ = simulate.key_up(modifier_kind.to_keycode());
             }
         }
     }
