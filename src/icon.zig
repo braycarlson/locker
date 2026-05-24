@@ -1,40 +1,50 @@
 const std = @import("std");
-const w32 = @import("win32").everything;
 
-const constants = @import("constants.zig");
-const hook = @import("hook.zig");
+const wisp = @import("wisp");
 
-const LockerError = @import("error.zig").LockerError;
+const constant = @import("constant.zig");
+const State = @import("state.zig").State;
 
-pub const Icon = struct {
-    lock: ?w32.HICON = null,
-    unlock: ?w32.HICON = null,
+const App = wisp.App;
+const Icon = wisp.Icon;
+const IconBuilder = wisp.IconBuilder;
 
-    pub fn init(self: *Icon) !void {
-        const hmod = hook.getModuleHandle();
+pub const IconManager = struct {
+    app: *App,
 
-        self.lock = @ptrCast(w32.LoadImageW(hmod, @ptrFromInt(@as(usize, constants.ResourceIdentifier.LOCK_ICON)), w32.IMAGE_ICON, 0, 0, w32.LR_DEFAULTCOLOR));
-        if (self.lock == null) self.lock = w32.LoadIconW(null, w32.IDI_SHIELD);
-
-        self.unlock = @ptrCast(w32.LoadImageW(hmod, @ptrFromInt(@as(usize, constants.ResourceIdentifier.UNLOCK_ICON)), w32.IMAGE_ICON, 0, 0, w32.LR_DEFAULTCOLOR));
-        if (self.unlock == null) self.unlock = w32.LoadIconW(null, w32.IDI_APPLICATION);
-
-        if (self.lock == null or self.unlock == null) return LockerError.IconLoadFailed;
+    pub fn init(app: *App) IconManager {
+        return IconManager{
+            .app = app,
+        };
     }
 
-    pub fn current(self: *Icon, locked: bool) w32.HICON {
-        return if (locked) self.lock.? else self.unlock.?;
+    pub fn configure(self: *IconManager) void {
+        _ = IconBuilder.init(self.app.get_icon())
+            .resource("locked", constant.Resource.lock_icon)
+            .resource("unlocked", constant.Resource.unlock_icon)
+            .system("locked_fallback", .shield)
+            .system("unlocked_fallback", .application)
+            .done();
+
+        self.app.get_icon().set_current("unlocked") catch {
+            self.app.get_icon().set_current("unlocked_fallback") catch {};
+        };
     }
 
-    pub fn deinit(self: *Icon) void {
-        if (self.lock) |h| {
-            _ = w32.DestroyIcon(h);
-            self.lock = null;
-        }
+    pub fn get_icon_for_state(self: *IconManager, value: State) ?*const Icon {
+        return self.app.get_icon().get(value.to_string());
+    }
 
-        if (self.unlock) |h| {
-            _ = w32.DestroyIcon(h);
-            self.unlock = null;
-        }
+    pub fn update(self: *IconManager, value: State) void {
+        const icon_name = value.to_string();
+        const fallback_name = if (value.is_locked()) "locked_fallback" else "unlocked_fallback";
+
+        self.app.get_icon().set_current(icon_name) catch {
+            self.app.get_icon().set_current(fallback_name) catch {};
+        };
+
+        const icon = self.app.get_icon().get_current() orelse return;
+
+        self.app.get_tray().set_icon(icon) catch {};
     }
 };

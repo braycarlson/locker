@@ -4,10 +4,23 @@ pub fn build(builder: *std.Build) void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
-    const win32_pkg = builder.dependency("zigwin32", .{});
-    const win32_mod = win32_pkg.module("win32");
+    const nimble = builder.dependency("nimble", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
-    const resources = builder.addSystemCommand(&[_][]const u8{
+    const wisp = builder.dependency("wisp", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const win32 = builder.dependency("zigwin32", .{});
+
+    const nimble_module = nimble.module("nimble");
+    const win32_module = win32.module("win32");
+    const wisp_module = wisp.module("wisp");
+
+    const resource = builder.addSystemCommand(&[_][]const u8{
         "windres",
         "-i",
         "locker.rc",
@@ -17,39 +30,24 @@ pub fn build(builder: *std.Build) void {
         "--output-format=coff",
     });
 
-    const hook_mod = builder.createModule(.{
-        .root_source_file = builder.path("src/hook.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    hook_mod.addImport("win32", win32_mod);
-
-    const hook = builder.addLibrary(.{
-        .name = "hook",
-        .linkage = .dynamic,
-        .root_module = hook_mod,
-    });
-
-    hook.linkLibC();
-    hook.linkSystemLibrary("user32");
-    builder.installArtifact(hook);
-
-    const exe_mod = builder.createModule(.{
+    const exe_module = builder.createModule(.{
         .root_source_file = builder.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    exe_mod.addImport("win32", win32_mod);
+
+    exe_module.addImport("nimble", nimble_module);
+    exe_module.addImport("win32", win32_module);
+    exe_module.addImport("wisp", wisp_module);
 
     const exe = builder.addExecutable(.{
         .name = "locker",
-        .root_module = exe_mod,
+        .root_module = exe_module,
     });
 
     exe.addObjectFile(builder.path("locker.res"));
-    exe.step.dependOn(&resources.step);
+    exe.step.dependOn(&resource.step);
 
-    exe.linkLibrary(hook);
     exe.linkLibC();
     exe.linkSystemLibrary("user32");
     exe.linkSystemLibrary("gdi32");
@@ -58,4 +56,23 @@ pub fn build(builder: *std.Build) void {
     exe.subsystem = .Windows;
 
     builder.installArtifact(exe);
+
+    const test_step = builder.step("test", "Run unit tests");
+
+    const test_module = builder.createModule(.{
+        .root_source_file = builder.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    test_module.addImport("nimble", nimble_module);
+    test_module.addImport("win32", win32_module);
+    test_module.addImport("wisp", wisp_module);
+
+    const unit_test = builder.addTest(.{
+        .root_module = test_module,
+    });
+
+    const run_test = builder.addRunArtifact(unit_test);
+    test_step.dependOn(&run_test.step);
 }
