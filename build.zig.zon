@@ -9,23 +9,23 @@
         "build.zig.zon",
     },
     .dependencies = .{
-        .nimble = .{
-            .path = "../nimble",
-        },
         // .nimble = .{
-        //     .url = "https://github.com/braycarlson/nimble/archive/refs/heads/main.tar.gz",
-        //     .hash = "nimble-0.0.1-WsPw0rMUDwA8T7lIL4TmksbPB3QGukSDX7Q-FK5rLSqD",
+        //     .path = "../nimble",
         // },
-        .wisp = .{
-            .path = "../wisp",
+        .nimble = .{
+            .url = "https://github.com/braycarlson/nimble/archive/50f464d2d2301523151cc95f742eb1f31a6d12bb.tar.gz",
+            .hash = "nimble-0.0.1-WsPw0tL9DgC7xoZljycv1Td8NWvoKMFh67XSZraCjRp_",
         },
         // .wisp = .{
-        //     .url = "https://github.com/braycarlson/wisp/archive/refs/heads/main.tar.gz",
-        //     .hash = "wisp-0.0.1-NPtSMlc6AwBbboMD2zQsgZb3oMIcty8bGbksG6DKjg2m",
+        //     .path = "../wisp",
         // },
+        .wisp = .{
+            .url = "https://github.com/braycarlson/wisp/archive/5736f8dca2665af230776a0f2e8e3895baf2218e.tar.gz",
+            .hash = "wisp-0.0.1-NPtSMh35BQBDw8rPiIaroPxrxGedAZwUCmZ3hu77-_Sy",
+        },
         .zigwin32 = .{
-            .url = "https://github.com/marlersoft/zigwin32/archive/refs/heads/main.tar.gz",
-            .hash = "zigwin32-25.0.28-preview-AAAAAICM5AMResOGQnQ85mfe60TTOQeMtt7GRATUOKoP",
+            .url = "https://github.com/marlersoft/zigwin32/archive/ec98bb4d9eea532320a8551720a9e3ec6de64994.tar.gz",
+            .hash = "win32-25.0.28-preview-mX5pFWMt5QPTVIGh3r2-OpPunpcCCjApyRbA6Zn6WALH",
         },
     },
 }
