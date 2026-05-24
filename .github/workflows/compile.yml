@@ -13,11 +13,11 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PROJECT: locker
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.0
+          version: 0.15.2
 
       - name: Get Version from Release Tag
         id: version
@@ -45,14 +45,14 @@ jobs:
           fi
 
       - name: Upload Executable as Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: executable-windows
           path: output/${{ env.PROJECT }}.exe
           retention-days: 1
 
       - name: Upload Executable to Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: output/${{ env.PROJECT }}.exe
