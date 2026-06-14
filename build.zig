@@ -45,13 +45,13 @@ pub fn build(builder: *std.Build) void {
         .root_module = exe_module,
     });
 
-    exe.addObjectFile(builder.path("locker.res"));
+    exe_module.addObjectFile(builder.path("locker.res"));
     exe.step.dependOn(&resource.step);
 
-    exe.linkLibC();
-    exe.linkSystemLibrary("user32");
-    exe.linkSystemLibrary("gdi32");
-    exe.linkSystemLibrary("shell32");
+    exe_module.link_libc = true;
+    exe_module.linkSystemLibrary("user32", .{});
+    exe_module.linkSystemLibrary("gdi32", .{});
+    exe_module.linkSystemLibrary("shell32", .{});
 
     exe.subsystem = .Windows;
 

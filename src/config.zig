@@ -312,7 +312,7 @@ pub const Config = struct {
 
         const allocator = self.arena.allocator();
 
-        const parsed = std.zon.parse.fromSlice(ZonConfig, allocator, content, null, .{}) catch {
+        const parsed = std.zon.parse.fromSliceAlloc(ZonConfig, allocator, content, null, .{}) catch {
             return Error.ParseError;
         };
 
@@ -454,9 +454,12 @@ pub const Config = struct {
     fn load_from_file(self: *Config) bool {
         std.debug.assert(self.config_path_length > 0);
 
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        const io = threaded.io();
+
         const path = self.config_path[0..self.config_path_length];
 
-        const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
+        const file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch |err| {
             if (err == error.FileNotFound) {
                 self.is_loaded_from_file = true;
                 self.save() catch {};
@@ -465,9 +468,9 @@ pub const Config = struct {
             return false;
         };
 
-        defer file.close();
+        defer file.close(io);
 
-        const count = file.readAll(self.content_buffer[0..content_length_max]) catch {
+        const count = file.readPositionalAll(io, self.content_buffer[0..content_length_max], 0) catch {
             return false;
         };
 
@@ -537,14 +540,17 @@ pub const Config = struct {
     }
 
     fn write_config_file(self: *Config, path: []const u8) void {
-        const file = std.fs.createFileAbsolute(path, .{}) catch {
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        const io = threaded.io();
+
+        const file = std.Io.Dir.createFileAbsolute(io, path, .{}) catch {
             return;
         };
 
-        defer file.close();
+        defer file.close(io);
 
         var buffer: [4096]u8 = undefined;
-        var writer = file.writer(&buffer);
+        var writer = file.writer(io, &buffer);
 
         const zon = self.to_zon_config() catch {
             return;

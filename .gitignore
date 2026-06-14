@@ -1,6 +1,7 @@
 # locker
 .zig-cache/
 zig-out/
+zig-pkg/
 
 # Binaries for programs and plugins
 *.exe

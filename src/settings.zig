@@ -53,10 +53,13 @@ pub const SettingsManager = struct {
     }
 
     fn read_content(self: *SettingsManager, path: []const u8) ?[:0]const u8 {
-        const file = std.fs.openFileAbsolute(path, .{}) catch return null;
-        defer file.close();
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        const io = threaded.io();
 
-        const count = file.readAll(self.configuration.content_buffer[0..Config.content_length_max]) catch return null;
+        const file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch return null;
+        defer file.close(io);
+
+        const count = file.readPositionalAll(io, self.configuration.content_buffer[0..Config.content_length_max], 0) catch return null;
 
         if (count == 0) {
             return null;
