@@ -31,7 +31,7 @@ pub const SettingsManager = struct {
     }
 
     pub fn reload(self: *SettingsManager) bool {
-        const path = self.configuration.config_path[0..self.configuration.config_path_length];
+        const path = self.configuration.get_config_path() orelse return false;
 
         const content = self.read_content(path) orelse return false;
 
@@ -59,7 +59,9 @@ pub const SettingsManager = struct {
         const file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch return null;
         defer file.close(io);
 
-        const count = file.readPositionalAll(io, self.configuration.content_buffer[0..Config.content_length_max], 0) catch return null;
+        const buffer = self.configuration.content_buffer[0..Config.content_length_max];
+
+        const count = file.readPositionalAll(io, buffer, 0) catch return null;
 
         if (count == 0) {
             return null;

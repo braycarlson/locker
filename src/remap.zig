@@ -22,7 +22,7 @@ pub const Remap = struct {
         };
     }
 
-    pub fn process(self: *Remap, value: u8, is_down: bool, extra: usize) ?u32 {
+    pub fn process(self: *Remap, value: u8, is_down: bool, extra: u64) ?u32 {
         std.debug.assert(keycode.is_valid(value));
 
         if (extra == simulate.marker_injected) {

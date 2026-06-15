@@ -122,22 +122,21 @@ fn on_window_message(e: *const Event, ctx: ?*anyopaque) Response {
     const handler: *EventHandler = @ptrCast(@alignCast(ctx.?));
     const data = e.payload.window_message;
 
-    if (data.message == constant.wm_config_reload) {
-        handler.dispatcher.on_config_reload();
-        return .handled;
+    switch (data.message) {
+        constant.wm_config_reload => {
+            handler.dispatcher.on_config_reload();
+            return .handled;
+        },
+        constant.wm_lock => {
+            handler.dispatcher.on_lock();
+            return .handled;
+        },
+        constant.wm_unlock => {
+            handler.dispatcher.on_unlock();
+            return .handled;
+        },
+        else => return .pass,
     }
-
-    if (data.message == constant.wm_lock) {
-        handler.dispatcher.on_lock();
-        return .handled;
-    }
-
-    if (data.message == constant.wm_unlock) {
-        handler.dispatcher.on_unlock();
-        return .handled;
-    }
-
-    return .pass;
 }
 
 fn handle_command(handler: *EventHandler, command: u32) void {

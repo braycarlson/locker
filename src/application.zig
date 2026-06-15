@@ -56,19 +56,11 @@ pub const Application = struct {
     settings: SettingsManager,
     state: State,
 
-    pub fn init(logger: ?*Logger) !Application {
+    pub fn init(self: *Application, logger: ?*Logger) void {
         const configuration = load_configuration(logger);
 
-        var app = App.init(.{
-            .name = "Locker",
-            .tooltip = "Peripheral Locker",
-            .initial_state = "unlocked",
-        });
-
-        _ = app.configure();
-
-        return Application{
-            .app = app,
+        self.* = Application{
+            .app = undefined,
             .configuration = configuration,
             .handler = undefined,
             .icon = undefined,
@@ -83,6 +75,14 @@ pub const Application = struct {
             .settings = undefined,
             .state = .unlocked,
         };
+
+        self.app.init(.{
+            .name = "Locker",
+            .tooltip = "Peripheral Locker",
+            .initial_state = "unlocked",
+        });
+
+        _ = self.app.configure();
     }
 
     pub fn configure(self: *Application) !void {
@@ -143,6 +143,12 @@ pub const Application = struct {
 
     fn unlock(self: *Application) void {
         self.set_state(.unlocked, "trigger activated");
+    }
+
+    fn post_message(self: *Application, message: u32) void {
+        const handle = self.app.get_hwnd() orelse return;
+
+        _ = w32.PostMessageW(handle, message, 0, 0);
     }
 
     fn log(self: *Application, message: []const u8) void {
@@ -312,63 +318,67 @@ pub const Application = struct {
     }
 };
 
+fn current() ?*Application {
+    return instance.load(.seq_cst);
+}
+
 fn dispatch_config_reload() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_config_reload();
 }
 
 fn dispatch_exit() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_exit();
 }
 
 fn dispatch_init() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_init();
 }
 
 fn dispatch_lock() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.lock();
 }
 
 fn dispatch_menu_show() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_menu_show();
 }
 
 fn dispatch_open_settings() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_open_settings();
 }
 
 fn dispatch_shutdown() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_shutdown();
 }
 
 fn dispatch_timer_tick(timer_id: u32) void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_timer_tick(timer_id);
 }
 
 fn dispatch_toggle_keyboard() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_toggle_keyboard();
 }
 
 fn dispatch_toggle_mouse() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_toggle_mouse();
 }
 
 fn dispatch_toggle_state() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.on_toggle_state();
 }
 
 fn dispatch_unlock() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
     app.unlock();
 }
 
@@ -385,25 +395,19 @@ fn lock_bind_wrapper(ctx: *anyopaque, key: *const Key) Response {
     _ = key;
     const self: *Application = @ptrCast(@alignCast(ctx));
 
-    if (self.app.get_hwnd()) |h| {
-        _ = w32.PostMessageW(h, constant.wm_lock, 0, 0);
-    }
+    self.post_message(constant.wm_lock);
 
     return .consume;
 }
 
 fn lock_sequence_callback(self: *Application) void {
-    if (self.app.get_hwnd()) |h| {
-        _ = w32.PostMessageW(h, constant.wm_lock, 0, 0);
-    }
+    self.post_message(constant.wm_lock);
 }
 
 fn on_config_file_changed() void {
-    const app = instance.load(.seq_cst) orelse return;
+    const app = current() orelse return;
 
-    if (app.app.get_hwnd()) |h| {
-        _ = w32.PostMessageW(h, constant.wm_config_reload, 0, 0);
-    }
+    app.post_message(constant.wm_config_reload);
 }
 
 fn remap_callback(ctx: *anyopaque, value: u8, down: bool, extra: u64) ?u32 {
@@ -414,14 +418,12 @@ fn remap_callback(ctx: *anyopaque, value: u8, down: bool, extra: u64) ?u32 {
 fn unlock_bind_wrapper(ctx: *anyopaque, key: *const Key) Response {
     _ = key;
     const self: *Application = @ptrCast(@alignCast(ctx));
-    if (self.app.get_hwnd()) |h| {
-        _ = w32.PostMessageW(h, constant.wm_unlock, 0, 0);
-    }
+
+    self.post_message(constant.wm_unlock);
+
     return .consume;
 }
 
 fn unlock_sequence_callback(self: *Application) void {
-    if (self.app.get_hwnd()) |h| {
-        _ = w32.PostMessageW(h, constant.wm_unlock, 0, 0);
-    }
+    self.post_message(constant.wm_unlock);
 }

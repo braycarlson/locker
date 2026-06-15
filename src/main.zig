@@ -5,16 +5,13 @@ const Logger = @import("logger.zig").Logger;
 
 const log_size_max: usize = 5 * 1024 * 1024;
 
-pub fn main() !void {
+pub fn main() void {
     var logger = init_logger();
     defer deinit_logger(&logger);
 
-    var application = Application.init(if (logger) |*log| log else null) catch |err| {
-        if (logger) |*log| {
-            log.log("Failed to initialize application: {}", .{err});
-        }
-        return err;
-    };
+    var application: Application = undefined;
+
+    application.init(if (logger) |*log| log else null);
 
     defer application.deinit();
 

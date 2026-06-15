@@ -1,3 +1,5 @@
+const w32 = @import("win32").everything;
+
 pub const Menu = struct {
     pub const exit: u32 = 1002;
     pub const setting: u32 = 1005;
@@ -16,6 +18,6 @@ pub const Timer = struct {
     pub const rehook_interval_ms: u32 = 10 * 60 * 1000;
 };
 
-pub const wm_config_reload: u32 = @import("win32").everything.WM_APP + 2;
-pub const wm_lock: u32 = @import("win32").everything.WM_APP + 3;
-pub const wm_unlock: u32 = @import("win32").everything.WM_APP + 4;
+pub const wm_config_reload: u32 = w32.WM_APP + 2;
+pub const wm_lock: u32 = w32.WM_APP + 3;
+pub const wm_unlock: u32 = w32.WM_APP + 4;

@@ -148,7 +148,6 @@ pub const Config = struct {
     lock_sequence_buffer: [sequence_buffer_length_max]u8 = [_]u8{0} ** sequence_buffer_length_max,
     lock_sequence_length: u32 = 0,
     lock_shortcut: Shortcut,
-    page_allocator: std.mem.Allocator = undefined,
     remap_count: u32 = 0,
     remap_entry: [remap_count_max]Remap = [_]Remap{.{ .from = .{}, .to = .{} }} ** remap_count_max,
     show_notification: bool = true,
@@ -157,15 +156,6 @@ pub const Config = struct {
     unlock_shortcut: Shortcut,
 
     pub fn init() Config {
-        const default_lock = Combination{
-            .modifier_set = modifier.Set.from(.{ .ctrl = true, .alt = true }),
-            .value = 'L',
-        };
-
-        const default_unlock = Sequence.init("UNLOCK") catch {
-            @panic("Failed to initialize default unlock sequence");
-        };
-
         const allocator = std.heap.page_allocator;
 
         const arena_buf = allocator.create([arena_size]u8) catch {
@@ -177,11 +167,10 @@ pub const Config = struct {
         };
 
         var result = Config{
-            .lock_shortcut = .{ .combination = default_lock },
-            .unlock_shortcut = .{ .sequence = default_unlock },
+            .lock_shortcut = default_lock_shortcut(),
+            .unlock_shortcut = default_unlock_shortcut(),
             .arena_buffer = arena_buf,
             .content_buffer = content_buf,
-            .page_allocator = allocator,
         };
 
         result.arena = std.heap.FixedBufferAllocator.init(result.arena_buffer);
@@ -191,22 +180,8 @@ pub const Config = struct {
 
     pub fn deinit(self: *Config) void {
         self.arena.reset();
-        self.page_allocator.destroy(self.arena_buffer);
-        self.page_allocator.destroy(self.content_buffer);
-    }
-
-    pub fn find_remap(self: *const Config, value: u8, current: *const modifier.Set) ?Combination {
-        std.debug.assert(keycode.is_valid(value));
-
-        const slice = self.get_remap();
-
-        for (slice) |entry| {
-            if (entry.from.match(value, current)) {
-                return entry.to;
-            }
-        }
-
-        return null;
+        std.heap.page_allocator.destroy(self.arena_buffer);
+        std.heap.page_allocator.destroy(self.content_buffer);
     }
 
     pub fn find_remap_entry(self: *const Config, value: u8, current: *const modifier.Set) ?Remap {
@@ -342,17 +317,8 @@ pub const Config = struct {
         self.remap_count = 0;
         self.disabled_count = 0;
 
-        const default_lock = Combination{
-            .modifier_set = modifier.Set.from(.{ .ctrl = true, .alt = true }),
-            .value = 'L',
-        };
-
-        const default_unlock = Sequence.init("UNLOCK") catch {
-            @panic("Failed to initialize default unlock sequence");
-        };
-
-        self.lock_shortcut = .{ .combination = default_lock };
-        self.unlock_shortcut = .{ .sequence = default_unlock };
+        self.lock_shortcut = default_lock_shortcut();
+        self.unlock_shortcut = default_unlock_shortcut();
         self.is_keyboard_locked = true;
         self.is_mouse_locked = false;
         self.show_notification = true;
@@ -385,10 +351,14 @@ pub const Config = struct {
 
         for (0..modifier.kind_count) |i| {
             if (modifier_array[i]) |modifier_kind| {
+                std.debug.assert(index < sequence_buffer_length_max);
+
                 buffer[index] = modifier_kind.to_keycode();
                 index += 1;
             }
         }
+
+        std.debug.assert(index < sequence_buffer_length_max);
 
         buffer[index] = combination.value;
         index += 1;
@@ -501,6 +471,8 @@ pub const Config = struct {
         self.disabled_count = 0;
 
         for (array) |item| {
+            std.debug.assert(self.disabled_count < disabled_count_max);
+
             const combination = try parse_zon_combination(&item);
             self.disabled_entry[self.disabled_count] = combination;
             self.disabled_count += 1;
@@ -517,6 +489,8 @@ pub const Config = struct {
         self.remap_count = 0;
 
         for (array) |item| {
+            std.debug.assert(self.remap_count < remap_count_max);
+
             const from = try parse_zon_combination(&item.from);
             const to = try parse_zon_combination(&item.to);
 
@@ -563,6 +537,23 @@ pub const Config = struct {
         writer.interface.flush() catch {};
     }
 };
+
+fn default_lock_shortcut() Shortcut {
+    const combination = Combination{
+        .modifier_set = modifier.Set.from(.{ .ctrl = true, .alt = true }),
+        .value = 'L',
+    };
+
+    return Shortcut{ .combination = combination };
+}
+
+fn default_unlock_shortcut() Shortcut {
+    const sequence = Sequence.init("UNLOCK") catch {
+        @panic("Failed to initialize default unlock sequence");
+    };
+
+    return Shortcut{ .sequence = sequence };
+}
 
 fn keycode_to_string(allocator: std.mem.Allocator, value: u8) !?[]const u8 {
     std.debug.assert(keycode.is_valid(value));

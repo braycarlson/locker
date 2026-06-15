@@ -1,5 +1,3 @@
-const std = @import("std");
-
 const wisp = @import("wisp");
 
 const constant = @import("constant.zig");
@@ -19,15 +17,17 @@ pub const IconManager = struct {
     }
 
     pub fn configure(self: *IconManager) void {
-        _ = IconBuilder.init(self.app.get_icon())
+        const icon = self.app.get_icon();
+
+        _ = IconBuilder.init(icon)
             .resource("locked", constant.Resource.lock_icon)
             .resource("unlocked", constant.Resource.unlock_icon)
             .system("locked_fallback", .shield)
             .system("unlocked_fallback", .application)
-            .done();
+            .done() catch icon;
 
-        self.app.get_icon().set_current("unlocked") catch {
-            self.app.get_icon().set_current("unlocked_fallback") catch {};
+        icon.set_current("unlocked") catch {
+            icon.set_current("unlocked_fallback") catch {};
         };
     }
 
@@ -36,14 +36,15 @@ pub const IconManager = struct {
     }
 
     pub fn update(self: *IconManager, value: State) void {
+        const manager = self.app.get_icon();
         const icon_name = value.to_string();
         const fallback_name = if (value.is_locked()) "locked_fallback" else "unlocked_fallback";
 
-        self.app.get_icon().set_current(icon_name) catch {
-            self.app.get_icon().set_current(fallback_name) catch {};
+        manager.set_current(icon_name) catch {
+            manager.set_current(fallback_name) catch {};
         };
 
-        const icon = self.app.get_icon().get_current() orelse return;
+        const icon = manager.get_current() orelse return;
 
         self.app.get_tray().set_icon(icon) catch {};
     }
