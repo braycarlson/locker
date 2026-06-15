@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const w32 = @import("win32").everything;
+const win32 = @import("win32").everything;
 const wisp = @import("wisp");
 
 const Config = @import("config.zig").Config;
@@ -53,8 +53,7 @@ pub const SettingsManager = struct {
     }
 
     fn read_content(self: *SettingsManager, path: []const u8) ?[:0]const u8 {
-        var threaded: std.Io.Threaded = .init_single_threaded;
-        const io = threaded.io();
+        const io = self.configuration.io;
 
         const file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch return null;
         defer file.close(io);
@@ -88,7 +87,7 @@ fn open_path(path: []const u8) void {
 
     buffer[length] = 0;
 
-    _ = w32.ShellExecuteW(
+    _ = win32.ShellExecuteW(
         null,
         std.unicode.utf8ToUtf16LeStringLiteral("open"),
         @ptrCast(&buffer),

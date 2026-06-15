@@ -7,14 +7,23 @@ pub const State = enum(u8) {
     }
 
     pub fn toggle(self: State) State {
-        return if (self == .locked) State.unlocked else State.locked;
+        return switch (self) {
+            .locked => .unlocked,
+            .unlocked => .locked,
+        };
     }
 
     pub fn to_string(self: State) []const u8 {
-        return if (self == .locked) "locked" else "unlocked";
+        return switch (self) {
+            .locked => "locked",
+            .unlocked => "unlocked",
+        };
     }
 
     pub fn to_action_string(self: State) []const u8 {
-        return if (self == .locked) "Unlock" else "Lock";
+        return switch (self) {
+            .locked => "Unlock",
+            .unlocked => "Lock",
+        };
     }
 };

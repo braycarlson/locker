@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const nimble = @import("nimble");
-const w32 = @import("win32").everything;
+const win32 = @import("win32").everything;
 const wisp = @import("wisp");
 
 const Config = @import("config.zig").Config;
@@ -45,31 +45,31 @@ pub const Application = struct {
     configuration: Config,
     handler: EventHandler,
     icon: IconManager,
+    is_keyboard_locked: bool,
+    is_mouse_locked: bool,
     keyboard: Keyboard,
-    keyboard_locked: bool,
     logger: ?*Logger,
     menu: MenuManager,
     mouse: Mouse,
-    mouse_locked: bool,
     notification: NotificationManager,
     remap: Remap,
     settings: SettingsManager,
     state: State,
 
-    pub fn init(self: *Application, logger: ?*Logger) void {
-        const configuration = load_configuration(logger);
+    pub fn init(self: *Application, io: std.Io, logger: ?*Logger) void {
+        const configuration = Config.load(io);
 
         self.* = Application{
             .app = undefined,
             .configuration = configuration,
             .handler = undefined,
             .icon = undefined,
+            .is_keyboard_locked = configuration.is_keyboard_locked,
+            .is_mouse_locked = configuration.is_mouse_locked,
             .keyboard = Keyboard.init(),
-            .keyboard_locked = configuration.is_keyboard_locked,
             .logger = logger,
             .menu = undefined,
             .mouse = Mouse.init(),
-            .mouse_locked = configuration.is_mouse_locked,
             .notification = undefined,
             .remap = undefined,
             .settings = undefined,
@@ -146,24 +146,32 @@ pub const Application = struct {
     }
 
     fn post_message(self: *Application, message: u32) void {
+        std.debug.assert(message != 0);
+
         const handle = self.app.get_hwnd() orelse return;
 
-        _ = w32.PostMessageW(handle, message, 0, 0);
+        _ = win32.PostMessageW(handle, message, 0, 0);
     }
 
     fn log(self: *Application, message: []const u8) void {
+        std.debug.assert(message.len > 0);
+
         if (self.logger) |logger| {
             logger.log("{s}", .{message});
         }
     }
 
     fn log_error(self: *Application, message: []const u8, err: anyerror) void {
+        std.debug.assert(message.len > 0);
+
         if (self.logger) |logger| {
             logger.log("{s}: {}", .{ message, err });
         }
     }
 
     fn log_state(self: *Application, value: State, reason: []const u8) void {
+        std.debug.assert(reason.len > 0);
+
         if (self.logger) |logger| {
             if (value.is_locked()) {
                 logger.log("Peripherals locked ({s})", .{reason});
@@ -179,8 +187,8 @@ pub const Application = struct {
         }
 
         self.remap = Remap.init(&self.configuration, self.logger);
-        self.keyboard_locked = self.configuration.is_keyboard_locked;
-        self.mouse_locked = self.configuration.is_mouse_locked;
+        self.is_keyboard_locked = self.configuration.is_keyboard_locked;
+        self.is_mouse_locked = self.configuration.is_mouse_locked;
         self.notification.set_enabled(self.configuration.show_notification);
     }
 
@@ -204,7 +212,7 @@ pub const Application = struct {
     }
 
     fn on_menu_show(self: *Application) void {
-        self.menu.build(self.state, self.keyboard_locked, self.mouse_locked);
+        self.menu.build(self.state, self.is_keyboard_locked, self.is_mouse_locked);
     }
 
     fn on_open_settings(self: *Application) void {
@@ -223,11 +231,11 @@ pub const Application = struct {
     }
 
     fn on_toggle_keyboard(self: *Application) void {
-        self.set_keyboard_locked(!self.keyboard_locked);
+        self.set_keyboard_locked(!self.is_keyboard_locked);
     }
 
     fn on_toggle_mouse(self: *Application) void {
-        self.set_mouse_locked(!self.mouse_locked);
+        self.set_mouse_locked(!self.is_mouse_locked);
     }
 
     fn on_toggle_state(self: *Application) void {
@@ -280,27 +288,29 @@ pub const Application = struct {
     }
 
     fn set_keyboard_locked(self: *Application, value: bool) void {
-        self.keyboard_locked = value;
+        self.is_keyboard_locked = value;
 
         const message = if (value) "Keyboard blocking enabled" else "Keyboard blocking disabled";
         self.log(message);
     }
 
     fn set_mouse_locked(self: *Application, value: bool) void {
-        self.mouse_locked = value;
+        self.is_mouse_locked = value;
 
         const message = if (value) "Mouse blocking enabled" else "Mouse blocking disabled";
         self.log(message);
     }
 
     fn set_state(self: *Application, value: State, reason: []const u8) void {
+        std.debug.assert(reason.len > 0);
+
         self.state = value;
 
         if (value.is_locked()) {
-            if (self.keyboard_locked) {
+            if (self.is_keyboard_locked) {
                 self.keyboard.set_blocked(true);
             }
-            if (self.mouse_locked) {
+            if (self.is_mouse_locked) {
                 self.mouse.set_blocked(true);
             }
         } else {
@@ -314,6 +324,8 @@ pub const Application = struct {
     }
 
     fn toggle_state(self: *Application, reason: []const u8) void {
+        std.debug.assert(reason.len > 0);
+
         self.set_state(self.state.toggle(), reason);
     }
 };
@@ -382,18 +394,9 @@ fn dispatch_unlock() void {
     app.unlock();
 }
 
-fn load_configuration(logger: ?*Logger) Config {
-    return Config.load() catch |err| {
-        if (logger) |log| {
-            log.log("Unable to load config file, using default: {}", .{err});
-        }
-        return Config.init();
-    };
-}
-
-fn lock_bind_wrapper(ctx: *anyopaque, key: *const Key) Response {
+fn lock_bind_wrapper(context: *anyopaque, key: *const Key) Response {
     _ = key;
-    const self: *Application = @ptrCast(@alignCast(ctx));
+    const self: *Application = @ptrCast(@alignCast(context));
 
     self.post_message(constant.wm_lock);
 
@@ -410,14 +413,14 @@ fn on_config_file_changed() void {
     app.post_message(constant.wm_config_reload);
 }
 
-fn remap_callback(ctx: *anyopaque, value: u8, down: bool, extra: u64) ?u32 {
-    const self: *Application = @ptrCast(@alignCast(ctx));
-    return self.remap.process(value, down, extra);
+fn remap_callback(context: *anyopaque, value: u8, is_down: bool, extra: u64) ?u32 {
+    const self: *Application = @ptrCast(@alignCast(context));
+    return self.remap.process(value, is_down, extra);
 }
 
-fn unlock_bind_wrapper(ctx: *anyopaque, key: *const Key) Response {
+fn unlock_bind_wrapper(context: *anyopaque, key: *const Key) Response {
     _ = key;
-    const self: *Application = @ptrCast(@alignCast(ctx));
+    const self: *Application = @ptrCast(@alignCast(context));
 
     self.post_message(constant.wm_unlock);
 

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const w32 = @import("win32").everything;
+const win32 = @import("win32").everything;
 
 pub const path_length_max: u32 = 512;
 pub const appdata_length_max: u32 = 256;
@@ -45,7 +45,7 @@ pub fn join_path(buffer: *[path_length_max]u8, base: []const u8, filename: []con
     return buffer[0..total_length];
 }
 
-pub fn ensure_directory_exists(path: []const u8) PathError!void {
+pub fn ensure_directory_exists(io: std.Io, path: []const u8) PathError!void {
     std.debug.assert(path.len > 0);
     std.debug.assert(path.len < path_length_max);
 
@@ -55,9 +55,6 @@ pub fn ensure_directory_exists(path: []const u8) PathError!void {
 
     std.debug.assert(directory.len > 0);
     std.debug.assert(directory.len < path.len);
-
-    var threaded: std.Io.Threaded = .init_single_threaded;
-    const io = threaded.io();
 
     std.Io.Dir.createDirAbsolute(io, directory, .default_dir) catch |err| {
         if (err != error.PathAlreadyExists) {
@@ -69,7 +66,7 @@ pub fn ensure_directory_exists(path: []const u8) PathError!void {
 fn get_local_appdata_path(buffer: *[appdata_length_max]u8) ?[]const u8 {
     var wide_buffer: [appdata_length_max:0]u16 = undefined;
 
-    const wide_length = w32.GetEnvironmentVariableW(
+    const wide_length = win32.GetEnvironmentVariableW(
         std.unicode.utf8ToUtf16LeStringLiteral("LOCALAPPDATA"),
         &wide_buffer,
         wide_buffer.len + 1,

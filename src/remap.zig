@@ -60,6 +60,8 @@ pub const Remap = struct {
     }
 
     fn handle_win_key(self: *Remap, value: u8, is_down: bool) ?u32 {
+        std.debug.assert(is_win_key(value));
+
         if (is_down) {
             self.shortcut_invoked = false;
             return null;
@@ -108,16 +110,16 @@ fn send_remapped_shortcut(from: *const Combination, to: *const Combination) void
 
     _ = simulate.dummy();
 
-    for (0..modifier.kind_count) |i| {
-        if (from_array[i]) |modifier_kind| {
+    for (0..modifier.kind_count) |kind_index| {
+        if (from_array[kind_index]) |modifier_kind| {
             if (!is_modifier_in_set(&to_array, modifier_kind)) {
                 _ = simulate.key_up(modifier_kind.to_keycode());
             }
         }
     }
 
-    for (0..modifier.kind_count) |i| {
-        if (to_array[i]) |modifier_kind| {
+    for (0..modifier.kind_count) |kind_index| {
+        if (to_array[kind_index]) |modifier_kind| {
             if (!is_modifier_in_set(&from_array, modifier_kind)) {
                 _ = simulate.key_down(modifier_kind.to_keycode());
             }

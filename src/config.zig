@@ -61,8 +61,8 @@ pub const Sequence = struct {
         var result = Sequence{};
         const source_length: u32 = @intCast(source.len);
 
-        for (0..source_length) |i| {
-            result.data[i] = to_virtual_key(source[i]);
+        for (0..source_length) |index| {
+            result.data[index] = to_virtual_key(source[index]);
         }
 
         result.length = source_length;
@@ -81,7 +81,7 @@ pub const Sequence = struct {
 
     fn to_virtual_key(character: u8) u8 {
         if (character >= 'a' and character <= 'z') {
-            return character - 32;
+            return character - ('a' - 'A');
         }
         return character;
     }
@@ -142,6 +142,7 @@ pub const Config = struct {
     content_buffer: *[content_length_max + 1]u8 = undefined,
     disabled_count: u32 = 0,
     disabled_entry: [disabled_count_max]Combination = [_]Combination{.{}} ** disabled_count_max,
+    io: std.Io,
     is_keyboard_locked: bool = true,
     is_loaded_from_file: bool = false,
     is_mouse_locked: bool = false,
@@ -155,22 +156,23 @@ pub const Config = struct {
     unlock_sequence_length: u32 = 0,
     unlock_shortcut: Shortcut,
 
-    pub fn init() Config {
+    pub fn init(io: std.Io) Config {
         const allocator = std.heap.page_allocator;
 
-        const arena_buf = allocator.create([arena_size]u8) catch {
+        const arena_buffer = allocator.create([arena_size]u8) catch {
             @panic("Failed to allocate arena buffer");
         };
 
-        const content_buf = allocator.create([content_length_max + 1]u8) catch {
+        const content_buffer = allocator.create([content_length_max + 1]u8) catch {
             @panic("Failed to allocate content buffer");
         };
 
         var result = Config{
             .lock_shortcut = default_lock_shortcut(),
             .unlock_shortcut = default_unlock_shortcut(),
-            .arena_buffer = arena_buf,
-            .content_buffer = content_buf,
+            .arena_buffer = arena_buffer,
+            .content_buffer = content_buffer,
+            .io = io,
         };
 
         result.arena = std.heap.FixedBufferAllocator.init(result.arena_buffer);
@@ -203,10 +205,14 @@ pub const Config = struct {
             return null;
         }
 
+        std.debug.assert(self.config_path_length <= path_length_max);
+
         return self.config_path[0..self.config_path_length];
     }
 
     pub fn get_disabled(self: *const Config) []const Combination {
+        std.debug.assert(self.disabled_count <= disabled_count_max);
+
         return self.disabled_entry[0..self.disabled_count];
     }
 
@@ -231,6 +237,8 @@ pub const Config = struct {
     }
 
     pub fn get_remap(self: *const Config) []const Remap {
+        std.debug.assert(self.remap_count <= remap_count_max);
+
         return self.remap_entry[0..self.remap_count];
     }
 
@@ -268,8 +276,8 @@ pub const Config = struct {
         return false;
     }
 
-    pub fn load() !Config {
-        var config = Config.init();
+    pub fn load(io: std.Io) Config {
+        var config = Config.init(io);
 
         if (!config.load_config_path()) {
             return config;
@@ -331,7 +339,7 @@ pub const Config = struct {
 
         const path = self.config_path[0..self.config_path_length];
 
-        path_util.ensure_directory_exists(path) catch {
+        path_util.ensure_directory_exists(self.io, path) catch {
             return;
         };
 
@@ -349,8 +357,8 @@ pub const Config = struct {
         var index: u32 = 0;
         const modifier_array = combination.modifier_set.to_array();
 
-        for (0..modifier.kind_count) |i| {
-            if (modifier_array[i]) |modifier_kind| {
+        for (0..modifier.kind_count) |kind_index| {
+            if (modifier_array[kind_index]) |modifier_kind| {
                 std.debug.assert(index < sequence_buffer_length_max);
 
                 buffer[index] = modifier_kind.to_keycode();
@@ -377,9 +385,9 @@ pub const Config = struct {
 
         const slice = try allocator.alloc(ZonCombination, self.disabled_count);
 
-        for (0..self.disabled_count) |i| {
-            std.debug.assert(self.disabled_entry[i].is_valid());
-            slice[i] = try combination_to_zon(allocator, &self.disabled_entry[i]);
+        for (0..self.disabled_count) |index| {
+            std.debug.assert(self.disabled_entry[index].is_valid());
+            slice[index] = try combination_to_zon(allocator, &self.disabled_entry[index]);
         }
 
         return slice;
@@ -392,11 +400,11 @@ pub const Config = struct {
 
         const slice = try allocator.alloc(ZonRemap, self.remap_count);
 
-        for (0..self.remap_count) |i| {
-            const entry = self.remap_entry[i];
+        for (0..self.remap_count) |index| {
+            const entry = self.remap_entry[index];
             std.debug.assert(entry.is_valid());
 
-            slice[i] = .{
+            slice[index] = .{
                 .from = try combination_to_zon(allocator, &entry.from),
                 .to = try combination_to_zon(allocator, &entry.to),
             };
@@ -424,12 +432,9 @@ pub const Config = struct {
     fn load_from_file(self: *Config) bool {
         std.debug.assert(self.config_path_length > 0);
 
-        var threaded: std.Io.Threaded = .init_single_threaded;
-        const io = threaded.io();
-
         const path = self.config_path[0..self.config_path_length];
 
-        const file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch |err| {
+        const file = std.Io.Dir.openFileAbsolute(self.io, path, .{}) catch |err| {
             if (err == error.FileNotFound) {
                 self.is_loaded_from_file = true;
                 self.save() catch {};
@@ -438,9 +443,9 @@ pub const Config = struct {
             return false;
         };
 
-        defer file.close(io);
+        defer file.close(self.io);
 
-        const count = file.readPositionalAll(io, self.content_buffer[0..content_length_max], 0) catch {
+        const count = file.readPositionalAll(self.io, self.content_buffer[0..content_length_max], 0) catch {
             return false;
         };
 
@@ -514,17 +519,14 @@ pub const Config = struct {
     }
 
     fn write_config_file(self: *Config, path: []const u8) void {
-        var threaded: std.Io.Threaded = .init_single_threaded;
-        const io = threaded.io();
-
-        const file = std.Io.Dir.createFileAbsolute(io, path, .{}) catch {
+        const file = std.Io.Dir.createFileAbsolute(self.io, path, .{}) catch {
             return;
         };
 
-        defer file.close(io);
+        defer file.close(self.io);
 
         var buffer: [4096]u8 = undefined;
-        var writer = file.writer(io, &buffer);
+        var writer = file.writer(self.io, &buffer);
 
         const zon = self.to_zon_config() catch {
             return;
@@ -584,8 +586,8 @@ fn modifier_set_to_string(allocator: std.mem.Allocator, modifier_set: *const mod
     const array = modifier_set.to_array();
     var count: u8 = 0;
 
-    for (0..modifier.kind_count) |i| {
-        if (array[i] != null) {
+    for (0..modifier.kind_count) |kind_index| {
+        if (array[kind_index] != null) {
             count += 1;
         }
     }
@@ -597,8 +599,8 @@ fn modifier_set_to_string(allocator: std.mem.Allocator, modifier_set: *const mod
     const result = try allocator.alloc([]const u8, count);
     var result_index: u8 = 0;
 
-    for (0..modifier.kind_count) |i| {
-        if (array[i]) |modifier_kind| {
+    for (0..modifier.kind_count) |kind_index| {
+        if (array[kind_index]) |modifier_kind| {
             result[result_index] = @tagName(modifier_kind);
             result_index += 1;
         }
