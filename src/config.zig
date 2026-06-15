@@ -206,13 +206,11 @@ pub const Config = struct {
         }
 
         std.debug.assert(self.config_path_length <= path_length_max);
-
         return self.config_path[0..self.config_path_length];
     }
 
     pub fn get_disabled(self: *const Config) []const Combination {
         std.debug.assert(self.disabled_count <= disabled_count_max);
-
         return self.disabled_entry[0..self.disabled_count];
     }
 

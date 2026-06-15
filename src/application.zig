@@ -310,6 +310,7 @@ pub const Application = struct {
             if (self.is_keyboard_locked) {
                 self.keyboard.set_blocked(true);
             }
+
             if (self.is_mouse_locked) {
                 self.mouse.set_blocked(true);
             }
@@ -325,7 +326,6 @@ pub const Application = struct {
 
     fn toggle_state(self: *Application, reason: []const u8) void {
         std.debug.assert(reason.len > 0);
-
         self.set_state(self.state.toggle(), reason);
     }
 };
@@ -396,8 +396,8 @@ fn dispatch_unlock() void {
 
 fn lock_bind_wrapper(context: *anyopaque, key: *const Key) Response {
     _ = key;
-    const self: *Application = @ptrCast(@alignCast(context));
 
+    const self: *Application = @ptrCast(@alignCast(context));
     self.post_message(constant.wm_lock);
 
     return .consume;
@@ -409,7 +409,6 @@ fn lock_sequence_callback(self: *Application) void {
 
 fn on_config_file_changed() void {
     const app = current() orelse return;
-
     app.post_message(constant.wm_config_reload);
 }
 
@@ -420,8 +419,8 @@ fn remap_callback(context: *anyopaque, value: u8, is_down: bool, extra: u64) ?u3
 
 fn unlock_bind_wrapper(context: *anyopaque, key: *const Key) Response {
     _ = key;
-    const self: *Application = @ptrCast(@alignCast(context));
 
+    const self: *Application = @ptrCast(@alignCast(context));
     self.post_message(constant.wm_unlock);
 
     return .consume;
