@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const arc = @import("arc");
 const nimble = @import("nimble");
 
 const keycode = nimble.keycode;
@@ -8,7 +9,7 @@ const simulate = nimble.simulate.key;
 
 const Config = @import("config.zig").Config;
 const Combination = @import("config.zig").Combination;
-const Logger = @import("logger.zig").Logger;
+const Logger = arc.Logger;
 
 pub const Remap = struct {
     configuration: *Config,
@@ -80,7 +81,7 @@ pub const Remap = struct {
 
     fn log(self: *Remap, message: []const u8) void {
         if (self.logger) |logger| {
-            logger.log("{s}", .{message});
+            logger.info(message, &.{}, @src());
         }
     }
 };

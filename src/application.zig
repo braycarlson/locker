@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const arc = @import("arc");
 const nimble = @import("nimble");
 const win32 = @import("win32").everything;
 const wisp = @import("wisp");
@@ -10,7 +11,7 @@ const constant = @import("constant.zig");
 const Dispatcher = @import("handler.zig").Dispatcher;
 const EventHandler = @import("handler.zig").EventHandler;
 const IconManager = @import("icon.zig").IconManager;
-const Logger = @import("logger.zig").Logger;
+const Logger = arc.Logger;
 const MenuManager = @import("menu.zig").MenuManager;
 const NotificationManager = @import("notification.zig").NotificationManager;
 const Remap = @import("remap.zig").Remap;
@@ -157,7 +158,7 @@ pub const Application = struct {
         std.debug.assert(message.len > 0);
 
         if (self.logger) |logger| {
-            logger.log("{s}", .{message});
+            logger.info(message, &.{}, @src());
         }
     }
 
@@ -165,7 +166,7 @@ pub const Application = struct {
         std.debug.assert(message.len > 0);
 
         if (self.logger) |logger| {
-            logger.log("{s}: {}", .{ message, err });
+            logger.@"error"(message, &.{arc.err_from(err)}, @src());
         }
     }
 
@@ -173,11 +174,9 @@ pub const Application = struct {
         std.debug.assert(reason.len > 0);
 
         if (self.logger) |logger| {
-            if (value.is_locked()) {
-                logger.log("Peripherals locked ({s})", .{reason});
-            } else {
-                logger.log("Peripherals unlocked ({s})", .{reason});
-            }
+            const message = if (value.is_locked()) "Peripherals locked" else "Peripherals unlocked";
+
+            logger.info(message, &.{arc.string("reason", reason)}, @src());
         }
     }
 

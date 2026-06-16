@@ -1,10 +1,11 @@
 const std = @import("std");
 
+const arc = @import("arc");
 const win32 = @import("win32").everything;
 const wisp = @import("wisp");
 
 const Config = @import("config.zig").Config;
-const Logger = @import("logger.zig").Logger;
+const Logger = arc.Logger;
 
 pub const SettingsManager = struct {
     configuration: *Config,
@@ -48,7 +49,7 @@ pub const SettingsManager = struct {
 
     fn log(self: *SettingsManager, message: []const u8) void {
         if (self.logger) |logger| {
-            logger.log("{s}", .{message});
+            logger.info(message, &.{}, @src());
         }
     }
 

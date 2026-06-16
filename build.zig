@@ -4,6 +4,11 @@ pub fn build(builder: *std.Build) void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
+    const arc = builder.dependency("arc", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const nimble = builder.dependency("nimble", .{
         .target = target,
         .optimize = optimize,
@@ -16,6 +21,7 @@ pub fn build(builder: *std.Build) void {
 
     const win32 = builder.dependency("zigwin32", .{});
 
+    const arc_module = arc.module("arc");
     const nimble_module = nimble.module("nimble");
     const win32_module = win32.module("win32");
     const wisp_module = wisp.module("wisp");
@@ -36,6 +42,7 @@ pub fn build(builder: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe_module.addImport("arc", arc_module);
     exe_module.addImport("nimble", nimble_module);
     exe_module.addImport("win32", win32_module);
     exe_module.addImport("wisp", wisp_module);
@@ -65,6 +72,7 @@ pub fn build(builder: *std.Build) void {
         .optimize = optimize,
     });
 
+    test_module.addImport("arc", arc_module);
     test_module.addImport("nimble", nimble_module);
     test_module.addImport("win32", win32_module);
     test_module.addImport("wisp", wisp_module);
