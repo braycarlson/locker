@@ -22,7 +22,7 @@ const App = wisp.App;
 const Key = nimble.Key;
 const Response = nimble.Response;
 const Keyboard = nimble.Keyboard(.{});
-const Mouse = nimble.Mouse(.{});
+const Mouse = nimble.Mouse(.{ .pass_injected = false });
 
 var instance: std.atomic.Value(?*Application) = std.atomic.Value(?*Application).init(null);
 
@@ -197,12 +197,12 @@ pub const Application = struct {
     }
 
     fn on_init(self: *Application) void {
-        self.keyboard.start() catch {
-            self.log("Unable to start keyboard hook");
+        self.keyboard.start() catch |err| {
+            self.log_error("Unable to start keyboard hook", err);
         };
 
-        self.mouse.start() catch {
-            self.log("Unable to start mouse hook");
+        self.mouse.start() catch |err| {
+            self.log_error("Unable to start mouse hook", err);
         };
 
         _ = self.app.get_timer().start(constant.Timer.rehook_id, constant.Timer.rehook_interval_ms) catch null;
@@ -243,11 +243,15 @@ pub const Application = struct {
 
     fn refresh_hooks(self: *Application) void {
         if (!self.keyboard.is_running()) {
-            self.keyboard.start() catch {};
+            self.keyboard.start() catch |err| {
+                self.log_error("Unable to start keyboard hook", err);
+            };
         }
 
         if (!self.mouse.is_running()) {
-            self.mouse.start() catch {};
+            self.mouse.start() catch |err| {
+                self.log_error("Unable to start mouse hook", err);
+            };
         }
     }
 
