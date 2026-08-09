@@ -1,60 +1,75 @@
-name: Build Executable for Release
+name: compile
+
 on:
-  release:
-    types: [created]
+    release:
+        types: [created]
 
 permissions:
-  contents: write
+    contents: write
 
 jobs:
-  build:
-    runs-on: windows-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      PROJECT: locker
-    steps:
-      - uses: actions/checkout@v6
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.16.0
-
-      - name: Get Version from Release Tag
-        id: version
-        shell: bash
-        run: |
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
-
-      - name: Build Zig Executable
-        shell: bash
-        run: |
-          mkdir -p output
-          zig build -Dtarget=x86_64-windows -Doptimize=ReleaseSmall
-          cp zig-out/bin/locker.exe output/${{ env.PROJECT }}.exe
-
-      - name: Verify Executable Exists
-        shell: bash
-        run: |
-          FILE="output/${{ env.PROJECT }}.exe"
-
-          if [ -f "$FILE" ]; then
-            echo "Executable exists: $FILE"
-          else
-            echo "Executable not found: $FILE"
-            exit 1
-          fi
-
-      - name: Upload Executable as Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: executable-windows
-          path: output/${{ env.PROJECT }}.exe
-          retention-days: 1
-
-      - name: Upload Executable to Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: output/${{ env.PROJECT }}.exe
+    compile:
+        name: ${{ matrix.target }}
+        runs-on: ubuntu-latest
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            PROJECT: locker
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - target: x86_64-linux-gnu
+                      artifact: locker
+                      suffix: linux
+                    - target: x86_64-windows-gnu
+                      artifact: locker.exe
+                      suffix: windows
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  path: locker
+            - uses: actions/checkout@v6
+              with:
+                  repository: braycarlson/nimble
+                  path: nimble
+            - uses: actions/checkout@v6
+              with:
+                  repository: braycarlson/wisp
+                  path: wisp
+            - uses: mlugg/setup-zig@v2
+              with:
+                  version: 0.16.0
+
+            - name: Build the executable
+              shell: bash
+              working-directory: locker
+              run: |
+                  mkdir -p output
+                  zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe
+                  cp "zig-out/bin/${{ matrix.artifact }}" "output/${{ env.PROJECT }}-${{ matrix.suffix }}"
+
+            - name: Verify the executable exists
+              shell: bash
+              working-directory: locker
+              run: |
+                  FILE="output/${{ env.PROJECT }}-${{ matrix.suffix }}"
+
+                  if [ -f "$FILE" ]; then
+                    echo "Executable exists: $FILE"
+                  else
+                    echo "Executable not found: $FILE"
+                    exit 1
+                  fi
+
+            - name: Upload the executable as an artifact
+              uses: actions/upload-artifact@v7
+              with:
+                  name: executable-${{ matrix.suffix }}
+                  path: locker/output/${{ env.PROJECT }}-${{ matrix.suffix }}
+                  retention-days: 1
+
+            - name: Upload the executable to the release
+              uses: softprops/action-gh-release@v3
+              with:
+                  tag_name: ${{ github.event.release.tag_name }}
+                  files: locker/output/${{ env.PROJECT }}-${{ matrix.suffix }}

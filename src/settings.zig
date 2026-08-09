@@ -1,99 +1,124 @@
 const std = @import("std");
 
 const arc = @import("arc");
-const win32 = @import("win32").everything;
 const wisp = @import("wisp");
 
 const Config = @import("config.zig").Config;
+
+const assert = std.debug.assert;
+
 const Logger = arc.Logger;
 
 pub const SettingsManager = struct {
     configuration: *Config,
     logger: ?*Logger,
-    watcher: wisp.Watcher,
+    watch_handle: ?wisp.watcher.Handle,
 
     pub fn init(configuration: *Config, logger: ?*Logger) SettingsManager {
         return SettingsManager{
             .configuration = configuration,
             .logger = logger,
-            .watcher = wisp.Watcher.init(),
+            .watch_handle = null,
         };
     }
 
-    pub fn deinit(self: *SettingsManager) void {
-        self.watcher.deinit();
+    pub fn deinit(manager: *SettingsManager) void {
+        const handle = manager.watch_handle orelse return;
+
+        wisp.watcher.unwatch(handle);
+
+        manager.watch_handle = null;
+
+        assert(manager.watch_handle == null);
     }
 
-    pub fn open(self: *SettingsManager) void {
-        const path = self.configuration.get_config_path() orelse return;
+    pub fn open(manager: *SettingsManager) void {
+        const path = manager.configuration.get_config_path() orelse return;
 
-        self.log("Opening settings file");
-        open_path(path);
+        manager.log("Opening settings file");
+
+        wisp.shell.open(path) catch {
+            manager.log("Unable to open the settings file");
+
+            return;
+        };
     }
 
-    pub fn reload(self: *SettingsManager) bool {
-        const path = self.configuration.get_config_path() orelse return false;
+    pub fn reload(manager: *SettingsManager) bool {
+        const path = manager.configuration.get_config_path() orelse return false;
+        const content = manager.read_content(path) orelse return false;
 
-        const content = self.read_content(path) orelse return false;
+        manager.configuration.parse(content) catch {
+            manager.log("Rejected an invalid configuration");
 
-        self.configuration.reset();
-        self.configuration.parse(content) catch return false;
+            return false;
+        };
 
         return true;
     }
 
-    pub fn watch(self: *SettingsManager, callback: *const fn () void) void {
-        const path = self.configuration.get_config_path() orelse return;
-        self.watcher.watch(path, callback) catch {};
+    pub fn watch(
+        manager: *SettingsManager,
+        callback: wisp.watcher.Callback,
+        context: ?*anyopaque,
+    ) void {
+        assert(manager.watch_handle == null);
+
+        const path = manager.configuration.get_config_path() orelse return;
+
+        manager.watch_handle = wisp.watcher.watch(path, callback, context) catch {
+            manager.log("Unable to watch the settings file");
+
+            return;
+        };
     }
 
-    fn log(self: *SettingsManager, message: []const u8) void {
-        if (self.logger) |logger| {
+    fn log(manager: *SettingsManager, message: []const u8) void {
+        assert(message.len > 0);
+
+        if (manager.logger) |logger| {
             logger.info(message, &.{}, @src());
         }
     }
 
-    fn read_content(self: *SettingsManager, path: []const u8) ?[:0]const u8 {
-        const io = self.configuration.io;
+    fn read_content(manager: *SettingsManager, path: []const u8) ?[:0]const u8 {
+        const io = manager.configuration.io;
 
         const file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch return null;
         defer file.close(io);
 
-        const buffer = self.configuration.content_buffer[0..Config.content_length_max];
-
+        const buffer = manager.configuration.content_buffer[0..Config.content_length_max];
         const count = file.readPositionalAll(io, buffer, 0) catch return null;
 
         if (count == 0) {
             return null;
         }
 
-        self.configuration.content_buffer[count] = 0;
+        manager.configuration.content_buffer[count] = 0;
 
-        return self.configuration.content_buffer[0..count :0];
+        return manager.configuration.content_buffer[0..count :0];
     }
 };
 
-fn open_path(path: []const u8) void {
-    if (path.len == 0 or path.len > Config.path_length_max) {
-        return;
-    }
+const testing = std.testing;
 
-    var buffer: [Config.path_length_max]u16 = undefined;
+test "a fresh settings manager owns no watch" {
+    var configuration = Config.init(testing.io);
+    defer configuration.deinit();
 
-    const length = std.unicode.utf8ToUtf16Le(&buffer, path) catch return;
+    var settings = SettingsManager.init(&configuration, null);
+    defer settings.deinit();
 
-    if (length == 0 or length >= Config.path_length_max) {
-        return;
-    }
+    try testing.expect(settings.watch_handle == null);
+}
 
-    buffer[length] = 0;
+test "reload without a config path reports failure" {
+    var configuration = Config.init(testing.io);
+    defer configuration.deinit();
 
-    _ = win32.ShellExecuteW(
-        null,
-        std.unicode.utf8ToUtf16LeStringLiteral("open"),
-        @ptrCast(&buffer),
-        null,
-        null,
-        1,
-    );
+    var settings = SettingsManager.init(&configuration, null);
+    defer settings.deinit();
+
+    try testing.expect(configuration.get_config_path() == null);
+    try testing.expect(!settings.reload());
 }

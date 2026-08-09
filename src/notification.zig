@@ -1,39 +1,66 @@
+const std = @import("std");
+
 const wisp = @import("wisp");
 
-const IconManager = @import("icon.zig").IconManager;
 const State = @import("state.zig").State;
 
+const assert = std.debug.assert;
+
 const App = wisp.App;
+
+pub const title = "Peripheral Locker";
+
+comptime {
+    assert(title.len > 0);
+}
 
 pub const NotificationManager = struct {
     app: *App,
     enabled: bool,
-    icon: *IconManager,
 
-    pub fn init(app: *App, icon: *IconManager, enabled: bool) NotificationManager {
+    pub fn init(app: *App, enabled: bool) NotificationManager {
         return NotificationManager{
             .app = app,
             .enabled = enabled,
-            .icon = icon,
         };
     }
 
-    pub fn set_enabled(self: *NotificationManager, value: bool) void {
-        self.enabled = value;
+    pub fn set_enabled(manager: *NotificationManager, value: bool) void {
+        manager.enabled = value;
+
+        assert(manager.enabled == value);
     }
 
-    pub fn show(self: *NotificationManager, value: State) void {
-        if (!self.enabled) {
+    pub fn show(manager: *NotificationManager, value: State) void {
+        if (!manager.enabled) {
             return;
         }
 
-        const icon = self.icon.get_icon_for_state(value) orelse return;
+        const body = body_of(value);
 
-        const message = if (value.is_locked())
-            "Peripheral(s) are locked"
-        else
-            "Peripheral(s) are unlocked";
+        assert(body.len > 0);
 
-        self.app.get_tray().show_balloon_with_icon("Peripheral Locker", message, icon) catch {};
+        manager.app.notification.send_simple(title, body) catch {
+            return;
+        };
     }
 };
+
+fn body_of(value: State) []const u8 {
+    const result = switch (value) {
+        .locked => "Peripheral(s) are locked",
+        .unlocked => "Peripheral(s) are unlocked",
+    };
+
+    assert(result.len > 0);
+
+    return result;
+}
+
+const testing = std.testing;
+
+test "every state carries a distinct notification body" {
+    try testing.expectEqualStrings("Peripheral(s) are locked", body_of(.locked));
+    try testing.expectEqualStrings("Peripheral(s) are unlocked", body_of(.unlocked));
+    try testing.expect(!std.mem.eql(u8, body_of(.locked), body_of(.unlocked)));
+}

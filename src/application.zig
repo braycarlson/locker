@@ -2,433 +2,486 @@ const std = @import("std");
 
 const arc = @import("arc");
 const nimble = @import("nimble");
-const win32 = @import("win32").everything;
 const wisp = @import("wisp");
 
 const Config = @import("config.zig").Config;
-const ShortcutKind = @import("config.zig").ShortcutKind;
 const constant = @import("constant.zig");
-const Dispatcher = @import("handler.zig").Dispatcher;
-const EventHandler = @import("handler.zig").EventHandler;
+const EventHandlerType = @import("handler.zig").EventHandlerType;
 const IconManager = @import("icon.zig").IconManager;
-const Logger = arc.Logger;
+const InputThread = @import("input.zig").InputThread;
 const MenuManager = @import("menu.zig").MenuManager;
 const NotificationManager = @import("notification.zig").NotificationManager;
 const Remap = @import("remap.zig").Remap;
 const SettingsManager = @import("settings.zig").SettingsManager;
 const State = @import("state.zig").State;
 
+const assert = std.debug.assert;
+
 const App = wisp.App;
 const Key = nimble.Key;
+const Keycode = nimble.Keycode;
+const Logger = arc.Logger;
+const modifier = nimble.modifier;
+const Pattern = nimble.remote.Pattern;
 const Response = nimble.Response;
-const Keyboard = nimble.Keyboard(.{});
-const Mouse = nimble.Mouse(.{ .pass_injected = false });
 
-var instance: std.atomic.Value(?*Application) = std.atomic.Value(?*Application).init(null);
-
-const dispatcher = Dispatcher{
-    .on_config_reload = dispatch_config_reload,
-    .on_exit = dispatch_exit,
-    .on_init = dispatch_init,
-    .on_lock = dispatch_lock,
-    .on_menu_show = dispatch_menu_show,
-    .on_open_settings = dispatch_open_settings,
-    .on_shutdown = dispatch_shutdown,
-    .on_timer_tick = dispatch_timer_tick,
-    .on_toggle_keyboard = dispatch_toggle_keyboard,
-    .on_toggle_mouse = dispatch_toggle_mouse,
-    .on_toggle_state = dispatch_toggle_state,
-    .on_unlock = dispatch_unlock,
+pub const Error = error{
+    InputUnavailable,
+    RunFailed,
+    SetupFailed,
 };
+
+pub const name = "Locker";
+
+comptime {
+    assert(name.len > 0);
+}
 
 pub const Application = struct {
     app: App,
     configuration: Config,
-    handler: EventHandler,
     icon: IconManager,
+    input: InputThread,
     is_keyboard_locked: bool,
     is_mouse_locked: bool,
-    keyboard: Keyboard,
     logger: ?*Logger,
     menu: MenuManager,
-    mouse: Mouse,
     notification: NotificationManager,
     remap: Remap,
     settings: SettingsManager,
     state: State,
 
-    pub fn init(self: *Application, io: std.Io, logger: ?*Logger) void {
+    pub fn init(application: *Application, io: std.Io, logger: ?*Logger) Error!void {
         const configuration = Config.load(io);
 
-        self.* = Application{
+        application.* = Application{
             .app = undefined,
             .configuration = configuration,
-            .handler = undefined,
             .icon = undefined,
+            .input = InputThread.init(),
             .is_keyboard_locked = configuration.is_keyboard_locked,
             .is_mouse_locked = configuration.is_mouse_locked,
-            .keyboard = Keyboard.init(),
             .logger = logger,
             .menu = undefined,
-            .mouse = Mouse.init(),
             .notification = undefined,
             .remap = undefined,
             .settings = undefined,
             .state = .unlocked,
         };
 
-        self.app.init(.{
-            .name = "Locker",
+        application.app.init(.{
+            .name = name,
             .tooltip = "Peripheral Locker",
             .initial_state = "unlocked",
-        });
+        }) catch {
+            return Error.SetupFailed;
+        };
 
-        _ = self.app.configure();
-    }
+        errdefer application.app.deinit();
 
-    pub fn configure(self: *Application) !void {
-        self.icon = IconManager.init(&self.app);
-        self.icon.configure();
+        application.icon = IconManager.init(&application.app);
+        application.menu = MenuManager.init(&application.app);
 
-        self.menu = MenuManager.init(&self.app);
-
-        self.notification = NotificationManager.init(
-            &self.app,
-            &self.icon,
-            self.configuration.show_notification,
+        application.notification = NotificationManager.init(
+            &application.app,
+            application.configuration.show_notification,
         );
 
-        self.settings = SettingsManager.init(&self.configuration, self.logger);
+        application.remap = Remap.init(
+            &application.configuration,
+            application.input.handle(),
+            logger,
+        );
 
-        self.remap = Remap.init(&self.configuration, self.logger);
+        application.settings = SettingsManager.init(&application.configuration, logger);
 
-        self.keyboard.set_key_callback(remap_callback, self);
+        application.icon.configure() catch {
+            return Error.SetupFailed;
+        };
 
-        self.handler = EventHandler.init(&self.app, &dispatcher);
+        application.menu.build(
+            application.state,
+            application.is_keyboard_locked,
+            application.is_mouse_locked,
+        );
 
-        try self.register_triggers();
+        _ = application.app.configure();
 
-        self.log("Application is ready");
+        assert(!application.app.is_running());
+        assert(!application.state.is_locked());
+
+        application.log("Application is ready");
     }
 
-    pub fn deinit(self: *Application) void {
-        self.log("Shutting down");
+    pub fn deinit(application: *Application) void {
+        application.log("Shutting down");
 
-        instance.store(null, .seq_cst);
+        application.settings.deinit();
+        application.input.deinit();
+        application.app.deinit();
+        application.configuration.deinit();
 
-        self.settings.deinit();
-        self.keyboard.deinit();
-        self.mouse.deinit();
-        self.app.deinit();
-        self.configuration.deinit();
+        assert(!application.app.is_running());
     }
 
-    pub fn run(self: *Application) void {
-        instance.store(self, .seq_cst);
+    pub fn run(application: *Application) Error!void {
+        EventHandlerType(Application).register(&application.app.bus, application);
 
-        self.configure() catch |err| {
-            self.log_error("Failed to configure application", err);
+        application.input.start() catch |err| {
+            application.log_error("Unable to start the input hooks", err);
+
+            return Error.InputUnavailable;
+        };
+
+        application.input.handle().set_release_callback(rescue_release_callback, application);
+
+        application.install_remap_filter() catch |err| {
+            application.log_error("Unable to install the remap filter", err);
+        };
+
+        application.register_triggers() catch |err| {
+            application.log_error("Unable to register the lock triggers", err);
+
+            return Error.InputUnavailable;
+        };
+
+        application.push_block_state();
+
+        application.run_app() catch |err| {
+            application.log_error("Unable to run the application", err);
+
+            return Error.RunFailed;
+        };
+    }
+
+    fn run_app(application: *Application) !void {
+        return application.app.run();
+    }
+
+    pub fn on_custom(application: *Application, code: u32) void {
+        switch (code) {
+            constant.Message.lock => application.lock("trigger activated"),
+            constant.Message.unlock => application.unlock("trigger activated"),
+            constant.Message.config_reload => application.on_config_reload(),
+            constant.Message.rescue => application.on_rescue(),
+            else => {},
+        }
+    }
+
+    pub fn on_icon_change(application: *Application, icon_name: []const u8) void {
+        assert(icon_name.len > 0);
+
+        const handle = application.app.icon.get(icon_name) orelse return;
+
+        application.app.tray.set_icon(handle) catch {
+            application.log("Unable to update the tray icon");
+
+            return;
+        };
+    }
+
+    pub fn on_init(application: *Application) void {
+        _ = application.app.timer.start(
+            constant.Timer.rehook_id,
+            constant.Timer.rehook_interval_ms,
+        ) catch {
+            application.log("Unable to start the rehook timer");
+        };
+
+        application.settings.watch(on_config_file_changed, application);
+
+        application.log("Initialized");
+    }
+
+    pub fn on_menu_select(application: *Application, id: u32) void {
+        switch (id) {
+            constant.Menu.toggle => application.toggle_state("selected from menu"),
+            constant.Menu.toggle_keyboard => application.on_toggle_keyboard(),
+            constant.Menu.toggle_mouse => application.on_toggle_mouse(),
+            constant.Menu.setting => application.settings.open(),
+            constant.Menu.exit => application.on_exit(),
+            else => {},
+        }
+    }
+
+    pub fn on_menu_show(application: *Application) void {
+        application.menu.build(
+            application.state,
+            application.is_keyboard_locked,
+            application.is_mouse_locked,
+        );
+
+        application.menu.push();
+    }
+
+    pub fn on_shutdown(application: *Application) void {
+        application.log("Shutdown event received");
+
+        application.app.timer.stop(constant.Timer.rehook_id) catch {
+            application.log("Unable to stop the rehook timer");
+
+            return;
+        };
+    }
+
+    pub fn on_timer_tick(application: *Application, timer_id: u32) void {
+        if (timer_id == constant.Timer.rehook_id) {
+            application.refresh_hooks();
+        }
+    }
+
+    fn lock(application: *Application, reason: []const u8) void {
+        assert(reason.len > 0);
+
+        if (application.state.is_locked()) {
+            return;
+        }
+
+        application.set_state(.locked, reason);
+    }
+
+    fn unlock(application: *Application, reason: []const u8) void {
+        assert(reason.len > 0);
+
+        if (!application.state.is_locked()) {
+            return;
+        }
+
+        application.set_state(.unlocked, reason);
+    }
+
+    fn on_rescue(application: *Application) void {
+        application.log("Rescue released the input grab");
+        application.unlock("rescue chord held");
+    }
+
+    fn on_config_reload(application: *Application) void {
+        if (!application.settings.reload()) {
+            return;
+        }
+
+        application.is_keyboard_locked = application.configuration.is_keyboard_locked;
+        application.is_mouse_locked = application.configuration.is_mouse_locked;
+
+        application.notification.set_enabled(application.configuration.show_notification);
+
+        application.menu.build(
+            application.state,
+            application.is_keyboard_locked,
+            application.is_mouse_locked,
+        );
+
+        application.menu.push();
+        application.log("Configuration reloaded");
+    }
+
+    fn on_exit(application: *Application) void {
+        application.log("Exiting");
+        application.app.quit();
+    }
+
+    fn on_toggle_keyboard(application: *Application) void {
+        application.set_keyboard_locked(!application.is_keyboard_locked);
+    }
+
+    fn on_toggle_mouse(application: *Application) void {
+        application.set_mouse_locked(!application.is_mouse_locked);
+    }
+
+    fn refresh_hooks(application: *Application) void {
+        if (application.input.is_running()) {
+            return;
+        }
+
+        application.log("Reconnecting to the input daemon");
+
+        application.input.start() catch |err| {
+            application.log_error("Unable to reconnect to the input daemon", err);
+
             return;
         };
 
-        self.handler.register();
+        application.input.handle().set_release_callback(rescue_release_callback, application);
 
-        self.app.run() catch |err| {
-            self.log_error("Failed to run application", err);
+        application.install_remap_filter() catch |err| {
+            application.log_error("Unable to reinstall the remap filter", err);
         };
+
+        application.register_triggers() catch |err| {
+            application.log_error("Unable to re-register the lock triggers", err);
+        };
+
+        application.push_block_state();
     }
 
-    fn lock(self: *Application) void {
-        self.set_state(.locked, "trigger activated");
+    fn register_triggers(application: *Application) !void {
+        const client = application.input.handle();
+
+        switch (application.configuration.lock_shortcut) {
+            .combination => |combination| {
+                _ = try client.bind_key(
+                    combination.value,
+                    combination.modifier_set,
+                    .{ .consume = true },
+                    on_lock_trigger,
+                    application,
+                );
+            },
+            .sequence => |sequence| {
+                _ = try client.bind_sequence(
+                    sequence.to_slice(),
+                    .{ .consume = true },
+                    on_lock_trigger,
+                    application,
+                );
+            },
+        }
+
+        switch (application.configuration.unlock_shortcut) {
+            .combination => |combination| {
+                _ = try client.bind_key(
+                    combination.value,
+                    combination.modifier_set,
+                    .{ .consume = true, .exempt = true },
+                    on_unlock_trigger,
+                    application,
+                );
+            },
+            .sequence => |sequence| {
+                _ = try client.bind_sequence(
+                    sequence.to_slice(),
+                    .{ .consume = true, .exempt = true },
+                    on_unlock_trigger,
+                    application,
+                );
+            },
+        }
     }
 
-    fn unlock(self: *Application) void {
-        self.set_state(.unlocked, "trigger activated");
+    fn install_remap_filter(application: *Application) !void {
+        const win = modifier.Set.from(.{ .win = true });
+
+        const patterns = [_]Pattern{
+            .{ .key = @intFromEnum(Keycode.super), .match_any_modifiers = 1 },
+            .{ .key = @intFromEnum(Keycode.super_left), .match_any_modifiers = 1 },
+            .{ .key = @intFromEnum(Keycode.super_right), .match_any_modifiers = 1 },
+            .{
+                .modifiers = @intCast(win.flags),
+                .match_any_modifiers = 1,
+                .match_any_key = 1,
+            },
+        };
+
+        try application.input.handle().set_filter(&patterns, remap_filter_callback, application);
     }
 
-    fn post_message(self: *Application, message: u32) void {
-        std.debug.assert(message != 0);
-
-        const handle = self.app.get_hwnd() orelse return;
-
-        _ = win32.PostMessageW(handle, message, 0, 0);
+    fn push_block_state(application: *Application) void {
+        application.input.handle().set_blocked(
+            application.keyboard_blocked(),
+            application.mouse_blocked(),
+        );
     }
 
-    fn log(self: *Application, message: []const u8) void {
-        std.debug.assert(message.len > 0);
+    pub fn keyboard_blocked(application: *const Application) bool {
+        return application.state.is_locked() and application.is_keyboard_locked;
+    }
 
-        if (self.logger) |logger| {
+    pub fn mouse_blocked(application: *const Application) bool {
+        return application.state.is_locked() and application.is_mouse_locked;
+    }
+
+    fn set_keyboard_locked(application: *Application, value: bool) void {
+        application.is_keyboard_locked = value;
+
+        const message = if (value) "Keyboard blocking enabled" else "Keyboard blocking disabled";
+
+        application.log(message);
+    }
+
+    fn set_mouse_locked(application: *Application, value: bool) void {
+        application.is_mouse_locked = value;
+
+        const message = if (value) "Mouse blocking enabled" else "Mouse blocking disabled";
+
+        application.log(message);
+    }
+
+    fn set_state(application: *Application, value: State, reason: []const u8) void {
+        assert(reason.len > 0);
+
+        application.state = value;
+
+        application.push_block_state();
+
+        application.icon.update(value);
+        application.menu.build(value, application.is_keyboard_locked, application.is_mouse_locked);
+        application.menu.push();
+        application.log_state(value, reason);
+        application.notification.show(value);
+
+        assert(application.state == value);
+    }
+
+    fn toggle_state(application: *Application, reason: []const u8) void {
+        assert(reason.len > 0);
+
+        if (application.state.is_locked()) {
+            application.unlock(reason);
+
+            return;
+        }
+
+        application.lock(reason);
+    }
+
+    fn log(application: *Application, message: []const u8) void {
+        assert(message.len > 0);
+
+        if (application.logger) |logger| {
             logger.info(message, &.{}, @src());
         }
     }
 
-    fn log_error(self: *Application, message: []const u8, err: anyerror) void {
-        std.debug.assert(message.len > 0);
+    fn log_error(application: *Application, message: []const u8, err: anyerror) void {
+        assert(message.len > 0);
 
-        if (self.logger) |logger| {
+        if (application.logger) |logger| {
             logger.@"error"(message, &.{arc.err_from(err)}, @src());
         }
     }
 
-    fn log_state(self: *Application, value: State, reason: []const u8) void {
-        std.debug.assert(reason.len > 0);
+    fn log_state(application: *Application, value: State, reason: []const u8) void {
+        assert(reason.len > 0);
 
-        if (self.logger) |logger| {
+        if (application.logger) |logger| {
             const message = if (value.is_locked()) "Peripherals locked" else "Peripherals unlocked";
 
             logger.info(message, &.{arc.string("reason", reason)}, @src());
         }
     }
-
-    fn on_config_reload(self: *Application) void {
-        if (!self.settings.reload()) {
-            return;
-        }
-
-        self.remap = Remap.init(&self.configuration, self.logger);
-        self.is_keyboard_locked = self.configuration.is_keyboard_locked;
-        self.is_mouse_locked = self.configuration.is_mouse_locked;
-        self.notification.set_enabled(self.configuration.show_notification);
-    }
-
-    fn on_exit(self: *Application) void {
-        self.log("Exiting");
-        self.app.quit();
-    }
-
-    fn on_init(self: *Application) void {
-        self.keyboard.start() catch |err| {
-            self.log_error("Unable to start keyboard hook", err);
-        };
-
-        self.mouse.start() catch |err| {
-            self.log_error("Unable to start mouse hook", err);
-        };
-
-        _ = self.app.get_timer().start(constant.Timer.rehook_id, constant.Timer.rehook_interval_ms) catch null;
-
-        self.settings.watch(on_config_file_changed);
-    }
-
-    fn on_menu_show(self: *Application) void {
-        self.menu.build(self.state, self.is_keyboard_locked, self.is_mouse_locked);
-    }
-
-    fn on_open_settings(self: *Application) void {
-        self.settings.open();
-    }
-
-    fn on_shutdown(self: *Application) void {
-        self.keyboard.deinit();
-        self.mouse.deinit();
-    }
-
-    fn on_timer_tick(self: *Application, timer_id: u32) void {
-        if (timer_id == constant.Timer.rehook_id) {
-            self.refresh_hooks();
-        }
-    }
-
-    fn on_toggle_keyboard(self: *Application) void {
-        self.set_keyboard_locked(!self.is_keyboard_locked);
-    }
-
-    fn on_toggle_mouse(self: *Application) void {
-        self.set_mouse_locked(!self.is_mouse_locked);
-    }
-
-    fn on_toggle_state(self: *Application) void {
-        self.toggle_state("selected from menu");
-    }
-
-    fn refresh_hooks(self: *Application) void {
-        if (!self.keyboard.is_running()) {
-            self.keyboard.start() catch |err| {
-                self.log_error("Unable to start keyboard hook", err);
-            };
-        }
-
-        if (!self.mouse.is_running()) {
-            self.mouse.start() catch |err| {
-                self.log_error("Unable to start mouse hook", err);
-            };
-        }
-    }
-
-    fn register_triggers(self: *Application) !void {
-        switch (self.configuration.lock_shortcut) {
-            .combination => |combination| {
-                _ = try self.keyboard.registry.register(
-                    combination.value,
-                    combination.modifier_set,
-                    lock_bind_wrapper,
-                    self,
-                    .{},
-                );
-            },
-            .sequence => |sequence| {
-                _ = try self.keyboard.sequence(sequence.to_slice())
-                    .on(self, lock_sequence_callback);
-            },
-        }
-
-        switch (self.configuration.unlock_shortcut) {
-            .combination => |combination| {
-                _ = try self.keyboard.registry.register(
-                    combination.value,
-                    combination.modifier_set,
-                    unlock_bind_wrapper,
-                    self,
-                    .{ .block_exempt = true },
-                );
-            },
-            .sequence => |sequence| {
-                _ = try self.keyboard.sequence(sequence.to_slice())
-                    .block_exempt()
-                    .on(self, unlock_sequence_callback);
-            },
-        }
-    }
-
-    fn set_keyboard_locked(self: *Application, value: bool) void {
-        self.is_keyboard_locked = value;
-
-        const message = if (value) "Keyboard blocking enabled" else "Keyboard blocking disabled";
-        self.log(message);
-    }
-
-    fn set_mouse_locked(self: *Application, value: bool) void {
-        self.is_mouse_locked = value;
-
-        const message = if (value) "Mouse blocking enabled" else "Mouse blocking disabled";
-        self.log(message);
-    }
-
-    fn set_state(self: *Application, value: State, reason: []const u8) void {
-        std.debug.assert(reason.len > 0);
-
-        self.state = value;
-
-        if (value.is_locked()) {
-            if (self.is_keyboard_locked) {
-                self.keyboard.set_blocked(true);
-            }
-
-            if (self.is_mouse_locked) {
-                self.mouse.set_blocked(true);
-            }
-        } else {
-            self.keyboard.set_blocked(false);
-            self.mouse.set_blocked(false);
-        }
-
-        self.icon.update(value);
-        self.log_state(value, reason);
-        self.notification.show(value);
-    }
-
-    fn toggle_state(self: *Application, reason: []const u8) void {
-        std.debug.assert(reason.len > 0);
-        self.set_state(self.state.toggle(), reason);
-    }
 };
 
-fn current() ?*Application {
-    return instance.load(.seq_cst);
+fn on_lock_trigger(_: ?*anyopaque, _: ?*const Key) void {
+    _ = wisp.loop.post(constant.Message.lock);
 }
 
-fn dispatch_config_reload() void {
-    const app = current() orelse return;
-    app.on_config_reload();
+fn on_unlock_trigger(_: ?*anyopaque, _: ?*const Key) void {
+    _ = wisp.loop.post(constant.Message.unlock);
 }
 
-fn dispatch_exit() void {
-    const app = current() orelse return;
-    app.on_exit();
+fn rescue_release_callback(_: ?*anyopaque) void {
+    _ = wisp.loop.post(constant.Message.rescue);
 }
 
-fn dispatch_init() void {
-    const app = current() orelse return;
-    app.on_init();
+fn on_config_file_changed(context: ?*anyopaque) void {
+    assert(context != null);
+
+    _ = wisp.loop.post(constant.Message.config_reload);
 }
 
-fn dispatch_lock() void {
-    const app = current() orelse return;
-    app.lock();
-}
+fn remap_filter_callback(context: ?*anyopaque, key: *const Key) Response {
+    const pointer = context orelse return .pass;
+    const self: *Application = @ptrCast(@alignCast(pointer));
 
-fn dispatch_menu_show() void {
-    const app = current() orelse return;
-    app.on_menu_show();
-}
-
-fn dispatch_open_settings() void {
-    const app = current() orelse return;
-    app.on_open_settings();
-}
-
-fn dispatch_shutdown() void {
-    const app = current() orelse return;
-    app.on_shutdown();
-}
-
-fn dispatch_timer_tick(timer_id: u32) void {
-    const app = current() orelse return;
-    app.on_timer_tick(timer_id);
-}
-
-fn dispatch_toggle_keyboard() void {
-    const app = current() orelse return;
-    app.on_toggle_keyboard();
-}
-
-fn dispatch_toggle_mouse() void {
-    const app = current() orelse return;
-    app.on_toggle_mouse();
-}
-
-fn dispatch_toggle_state() void {
-    const app = current() orelse return;
-    app.on_toggle_state();
-}
-
-fn dispatch_unlock() void {
-    const app = current() orelse return;
-    app.unlock();
-}
-
-fn lock_bind_wrapper(context: *anyopaque, key: *const Key) Response {
-    _ = key;
-
-    const self: *Application = @ptrCast(@alignCast(context));
-    self.post_message(constant.wm_lock);
-
-    return .consume;
-}
-
-fn lock_sequence_callback(self: *Application) void {
-    self.post_message(constant.wm_lock);
-}
-
-fn on_config_file_changed() void {
-    const app = current() orelse return;
-    app.post_message(constant.wm_config_reload);
-}
-
-fn remap_callback(context: *anyopaque, value: u8, is_down: bool, extra: u64) ?u32 {
-    const self: *Application = @ptrCast(@alignCast(context));
-    return self.remap.process(value, is_down, extra);
-}
-
-fn unlock_bind_wrapper(context: *anyopaque, key: *const Key) Response {
-    _ = key;
-
-    const self: *Application = @ptrCast(@alignCast(context));
-    self.post_message(constant.wm_unlock);
-
-    return .consume;
-}
-
-fn unlock_sequence_callback(self: *Application) void {
-    self.post_message(constant.wm_unlock);
+    return self.remap.process(key) orelse .pass;
 }

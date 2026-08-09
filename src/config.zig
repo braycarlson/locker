@@ -1,17 +1,19 @@
 const std = @import("std");
 
 const nimble = @import("nimble");
+const wisp = @import("wisp");
+
+const Allocator = std.mem.Allocator;
+const assert = std.debug.assert;
 
 const keycode = nimble.keycode;
 const modifier = nimble.modifier;
-const path_util = @import("path.zig");
+
+const Key = nimble.Key;
+const Keycode = nimble.Keycode;
 
 pub const Error = error{
-    BufferTooSmall,
     InvalidKey,
-    InvalidModifier,
-    InvalidPath,
-    InvalidShortcut,
     ParseError,
     SequenceTooLong,
     TooManyDisabled,
@@ -25,21 +27,20 @@ pub const ShortcutKind = enum(u8) {
 
 pub const Combination = struct {
     modifier_set: modifier.Set = .{},
-    value: u8 = 0,
+    value: Keycode = .silent,
 
-    pub fn is_valid(self: *const Combination) bool {
-        return keycode.is_valid(self.value);
+    pub fn is_valid(combination: *const Combination) bool {
+        return combination.value != .silent;
     }
 
-    pub fn match(self: *const Combination, value: u8, current: *const modifier.Set) bool {
-        std.debug.assert(self.is_valid());
-        std.debug.assert(keycode.is_valid(value));
+    pub fn match(combination: *const Combination, key: *const Key) bool {
+        assert(combination.is_valid());
 
-        if (self.value != value) {
+        if (combination.value != key.value) {
             return false;
         }
 
-        return self.modifier_set.eql(current);
+        return combination.modifier_set.eql(&key.modifiers);
     }
 };
 
@@ -62,7 +63,7 @@ pub const Sequence = struct {
         const source_length: u32 = @intCast(source.len);
 
         for (0..source_length) |index| {
-            result.data[index] = to_virtual_key(source[index]);
+            result.data[index] = std.ascii.toUpper(source[index]);
         }
 
         result.length = source_length;
@@ -70,20 +71,14 @@ pub const Sequence = struct {
         return result;
     }
 
-    pub fn is_valid(self: *const Sequence) bool {
-        return self.length > 0 and self.length <= length_max;
+    pub fn is_valid(sequence: *const Sequence) bool {
+        return sequence.length > 0 and sequence.length <= length_max;
     }
 
-    pub fn to_slice(self: *const Sequence) []const u8 {
-        std.debug.assert(self.is_valid());
-        return self.data[0..self.length];
-    }
+    pub fn to_slice(sequence: *const Sequence) []const u8 {
+        assert(sequence.is_valid());
 
-    fn to_virtual_key(character: u8) u8 {
-        if (character >= 'a' and character <= 'z') {
-            return character - ('a' - 'A');
-        }
-        return character;
+        return sequence.data[0..sequence.length];
     }
 };
 
@@ -92,12 +87,12 @@ pub const Shortcut = union(ShortcutKind) {
     sequence: Sequence,
 };
 
-pub const Remap = struct {
+pub const RemapRule = struct {
     from: Combination,
     to: Combination,
 
-    pub fn is_valid(self: *const Remap) bool {
-        return self.from.is_valid() and self.to.is_valid();
+    pub fn is_valid(rule: *const RemapRule) bool {
+        return rule.from.is_valid() and rule.to.is_valid();
     }
 };
 
@@ -133,7 +128,6 @@ pub const Config = struct {
     pub const disabled_count_max: u32 = 64;
     pub const path_length_max: u32 = 512;
     pub const remap_count_max: u32 = 64;
-    pub const sequence_buffer_length_max: u32 = 8;
 
     arena: std.heap.FixedBufferAllocator = undefined,
     arena_buffer: *[arena_size]u8 = undefined,
@@ -146,24 +140,20 @@ pub const Config = struct {
     is_keyboard_locked: bool = true,
     is_loaded_from_file: bool = false,
     is_mouse_locked: bool = false,
-    lock_sequence_buffer: [sequence_buffer_length_max]u8 = [_]u8{0} ** sequence_buffer_length_max,
-    lock_sequence_length: u32 = 0,
     lock_shortcut: Shortcut,
     remap_count: u32 = 0,
-    remap_entry: [remap_count_max]Remap = [_]Remap{.{ .from = .{}, .to = .{} }} ** remap_count_max,
+    remap_entry: [remap_count_max]RemapRule = @splat(.{ .from = .{}, .to = .{} }),
     show_notification: bool = true,
-    unlock_sequence_buffer: [sequence_buffer_length_max]u8 = [_]u8{0} ** sequence_buffer_length_max,
-    unlock_sequence_length: u32 = 0,
     unlock_shortcut: Shortcut,
 
     pub fn init(io: std.Io) Config {
-        const allocator = std.heap.page_allocator;
+        const gpa = std.heap.page_allocator;
 
-        const arena_buffer = allocator.create([arena_size]u8) catch {
+        const arena_buffer = gpa.create([arena_size]u8) catch {
             @panic("Failed to allocate arena buffer");
         };
 
-        const content_buffer = allocator.create([content_length_max + 1]u8) catch {
+        const content_buffer = gpa.create([content_length_max + 1]u8) catch {
             @panic("Failed to allocate content buffer");
         };
 
@@ -180,19 +170,17 @@ pub const Config = struct {
         return result;
     }
 
-    pub fn deinit(self: *Config) void {
-        self.arena.reset();
-        std.heap.page_allocator.destroy(self.arena_buffer);
-        std.heap.page_allocator.destroy(self.content_buffer);
+    pub fn deinit(config: *Config) void {
+        config.arena.reset();
+        std.heap.page_allocator.destroy(config.arena_buffer);
+        std.heap.page_allocator.destroy(config.content_buffer);
     }
 
-    pub fn find_remap_entry(self: *const Config, value: u8, current: *const modifier.Set) ?Remap {
-        std.debug.assert(keycode.is_valid(value));
-
-        const slice = self.get_remap();
+    pub fn find_remap_entry(config: *const Config, key: *const Key) ?RemapRule {
+        const slice = config.get_remap();
 
         for (slice) |entry| {
-            if (entry.from.match(value, current)) {
+            if (entry.from.match(key)) {
                 return entry;
             }
         }
@@ -200,73 +188,33 @@ pub const Config = struct {
         return null;
     }
 
-    pub fn get_config_path(self: *const Config) ?[]const u8 {
-        if (self.config_path_length == 0) {
+    pub fn get_config_path(config: *const Config) ?[]const u8 {
+        if (config.config_path_length == 0) {
             return null;
         }
 
-        std.debug.assert(self.config_path_length <= path_length_max);
-        return self.config_path[0..self.config_path_length];
+        assert(config.config_path_length <= path_length_max);
+
+        return config.config_path[0..config.config_path_length];
     }
 
-    pub fn get_disabled(self: *const Config) []const Combination {
-        std.debug.assert(self.disabled_count <= disabled_count_max);
-        return self.disabled_entry[0..self.disabled_count];
+    pub fn get_disabled(config: *const Config) []const Combination {
+        assert(config.disabled_count <= disabled_count_max);
+
+        return config.disabled_entry[0..config.disabled_count];
     }
 
-    pub fn get_lock_sequence(self: *Config) ?[]const u8 {
-        switch (self.lock_shortcut) {
-            .combination => |combination| {
-                std.debug.assert(combination.is_valid());
+    pub fn get_remap(config: *const Config) []const RemapRule {
+        assert(config.remap_count <= remap_count_max);
 
-                self.build_combination_sequence(&combination, &self.lock_sequence_buffer, true);
-
-                if (self.lock_sequence_length == 0) {
-                    return null;
-                }
-
-                return self.lock_sequence_buffer[0..self.lock_sequence_length];
-            },
-            .sequence => |*sequence| {
-                std.debug.assert(sequence.is_valid());
-                return sequence.to_slice();
-            },
-        }
+        return config.remap_entry[0..config.remap_count];
     }
 
-    pub fn get_remap(self: *const Config) []const Remap {
-        std.debug.assert(self.remap_count <= remap_count_max);
-
-        return self.remap_entry[0..self.remap_count];
-    }
-
-    pub fn get_unlock_sequence(self: *Config) ?[]const u8 {
-        switch (self.unlock_shortcut) {
-            .combination => |combination| {
-                std.debug.assert(combination.is_valid());
-
-                self.build_combination_sequence(&combination, &self.unlock_sequence_buffer, false);
-
-                if (self.unlock_sequence_length == 0) {
-                    return null;
-                }
-
-                return self.unlock_sequence_buffer[0..self.unlock_sequence_length];
-            },
-            .sequence => |*sequence| {
-                std.debug.assert(sequence.is_valid());
-                return sequence.to_slice();
-            },
-        }
-    }
-
-    pub fn is_disabled(self: *const Config, value: u8, current: *const modifier.Set) bool {
-        std.debug.assert(keycode.is_valid(value));
-
-        const slice = self.get_disabled();
+    pub fn is_disabled(config: *const Config, key: *const Key) bool {
+        const slice = config.get_disabled();
 
         for (slice) |entry| {
-            if (entry.match(value, current)) {
+            if (entry.match(key)) {
                 return true;
             }
         }
@@ -288,162 +236,131 @@ pub const Config = struct {
         return config;
     }
 
-    pub fn parse(self: *Config, content: [:0]const u8) !void {
-        std.debug.assert(content.len > 0);
+    pub fn parse(config: *Config, content: [:0]const u8) Error!void {
+        assert(content.len > 0);
 
-        const allocator = self.arena.allocator();
+        config.arena.reset();
 
-        const parsed = std.zon.parse.fromSliceAlloc(ZonConfig, allocator, content, null, .{}) catch {
+        const arena = config.arena.allocator();
+
+        const parsed = std.zon.parse.fromSliceAlloc(
+            ZonConfig,
+            arena,
+            content,
+            null,
+            .{},
+        ) catch {
             return Error.ParseError;
         };
 
-        self.is_keyboard_locked = parsed.is_keyboard_locked;
-        self.is_mouse_locked = parsed.is_mouse_locked;
-        self.show_notification = parsed.show_notification;
+        var lock_shortcut = default_lock_shortcut();
+        var unlock_shortcut = default_unlock_shortcut();
 
         if (parsed.lock) |lock| {
-            self.lock_shortcut = try parse_shortcut(&lock);
+            lock_shortcut = try parse_shortcut(&lock);
         }
 
         if (parsed.unlock) |unlock| {
-            self.unlock_shortcut = try parse_shortcut(&unlock);
+            unlock_shortcut = try parse_shortcut(&unlock);
         }
+
+        var staged_remap: [remap_count_max]RemapRule = undefined;
+        var staged_remap_count: u32 = 0;
 
         if (parsed.remap) |array| {
-            try self.parse_remap_array(array);
+            staged_remap_count = try parse_remap_array(array, &staged_remap);
         }
+
+        var staged_disabled: [disabled_count_max]Combination = undefined;
+        var staged_disabled_count: u32 = 0;
 
         if (parsed.disabled) |array| {
-            try self.parse_disabled_array(array);
+            staged_disabled_count = try parse_disabled_array(array, &staged_disabled);
         }
+
+        config.is_keyboard_locked = parsed.is_keyboard_locked;
+        config.is_mouse_locked = parsed.is_mouse_locked;
+        config.show_notification = parsed.show_notification;
+        config.lock_shortcut = lock_shortcut;
+        config.unlock_shortcut = unlock_shortcut;
+        config.remap_entry = staged_remap;
+        config.remap_count = staged_remap_count;
+        config.disabled_entry = staged_disabled;
+        config.disabled_count = staged_disabled_count;
+
+        assert(config.remap_count <= remap_count_max);
+        assert(config.disabled_count <= disabled_count_max);
     }
 
-    pub fn reset(self: *Config) void {
-        self.arena.reset();
-        self.remap_count = 0;
-        self.disabled_count = 0;
+    pub fn reset(config: *Config) void {
+        config.arena.reset();
+        config.remap_count = 0;
+        config.disabled_count = 0;
 
-        self.lock_shortcut = default_lock_shortcut();
-        self.unlock_shortcut = default_unlock_shortcut();
-        self.is_keyboard_locked = true;
-        self.is_mouse_locked = false;
-        self.show_notification = true;
+        config.lock_shortcut = default_lock_shortcut();
+        config.unlock_shortcut = default_unlock_shortcut();
+        config.is_keyboard_locked = true;
+        config.is_mouse_locked = false;
+        config.show_notification = true;
     }
 
-    pub fn save(self: *Config) !void {
-        if (!self.is_loaded_from_file) {
+    pub fn save(config: *Config) void {
+        if (!config.is_loaded_from_file) {
             return;
         }
 
-        const path = self.config_path[0..self.config_path_length];
+        const path = config.config_path[0..config.config_path_length];
+        const directory = std.fs.path.dirname(path) orelse return;
 
-        path_util.ensure_directory_exists(self.io, path) catch {
+        std.Io.Dir.cwd().createDirPath(config.io, directory) catch {
             return;
         };
 
-        self.write_config_file(path);
+        config.write_config_file(path);
     }
 
-    fn build_combination_sequence(
-        self: *Config,
-        combination: *const Combination,
-        buffer: *[sequence_buffer_length_max]u8,
-        is_lock: bool,
-    ) void {
-        std.debug.assert(combination.is_valid());
-
-        var index: u32 = 0;
-        const modifier_array = combination.modifier_set.to_array();
-
-        for (0..modifier.kind_count) |kind_index| {
-            if (modifier_array[kind_index]) |modifier_kind| {
-                std.debug.assert(index < sequence_buffer_length_max);
-
-                buffer[index] = modifier_kind.to_keycode();
-                index += 1;
-            }
-        }
-
-        std.debug.assert(index < sequence_buffer_length_max);
-
-        buffer[index] = combination.value;
-        index += 1;
-
-        if (is_lock) {
-            self.lock_sequence_length = index;
-        } else {
-            self.unlock_sequence_length = index;
-        }
-    }
-
-    fn build_zon_disabled(self: *Config, allocator: std.mem.Allocator) !?[]const ZonCombination {
-        if (self.disabled_count == 0) {
-            return null;
-        }
-
-        const slice = try allocator.alloc(ZonCombination, self.disabled_count);
-
-        for (0..self.disabled_count) |index| {
-            std.debug.assert(self.disabled_entry[index].is_valid());
-            slice[index] = try combination_to_zon(allocator, &self.disabled_entry[index]);
-        }
-
-        return slice;
-    }
-
-    fn build_zon_remap(self: *Config, allocator: std.mem.Allocator) !?[]const ZonRemap {
-        if (self.remap_count == 0) {
-            return null;
-        }
-
-        const slice = try allocator.alloc(ZonRemap, self.remap_count);
-
-        for (0..self.remap_count) |index| {
-            const entry = self.remap_entry[index];
-            std.debug.assert(entry.is_valid());
-
-            slice[index] = .{
-                .from = try combination_to_zon(allocator, &entry.from),
-                .to = try combination_to_zon(allocator, &entry.to),
-            };
-        }
-
-        return slice;
-    }
-
-    fn load_config_path(self: *Config) bool {
+    fn load_config_path(config: *Config) bool {
         var buffer: [path_length_max]u8 = undefined;
 
-        const base = path_util.get_appdata_path(&buffer, "locker") catch {
+        const base = wisp.paths.config_dir(&buffer, "locker") catch {
             return false;
         };
 
-        const full_path = path_util.join_path(&self.config_path, base, "config.zon") orelse {
+        const full_path = std.fmt.bufPrint(
+            &config.config_path,
+            "{s}{c}{s}",
+            .{ base, std.fs.path.sep, "config.zon" },
+        ) catch {
             return false;
         };
 
-        self.config_path_length = @intCast(full_path.len);
+        config.config_path_length = @intCast(full_path.len);
 
         return true;
     }
 
-    fn load_from_file(self: *Config) bool {
-        std.debug.assert(self.config_path_length > 0);
+    fn load_from_file(config: *Config) bool {
+        assert(config.config_path_length > 0);
 
-        const path = self.config_path[0..self.config_path_length];
+        const path = config.config_path[0..config.config_path_length];
 
-        const file = std.Io.Dir.openFileAbsolute(self.io, path, .{}) catch |err| {
-            if (err == error.FileNotFound) {
-                self.is_loaded_from_file = true;
-                self.save() catch {};
+        const file = std.Io.Dir.openFileAbsolute(config.io, path, .{}) catch |err| switch (err) {
+            error.FileNotFound => {
+                config.is_loaded_from_file = true;
+                config.save();
+
                 return true;
-            }
-            return false;
+            },
+            else => return false,
         };
 
-        defer file.close(self.io);
+        defer file.close(config.io);
 
-        const count = file.readPositionalAll(self.io, self.content_buffer[0..content_length_max], 0) catch {
+        const count = file.readPositionalAll(
+            config.io,
+            config.content_buffer[0..content_length_max],
+            0,
+        ) catch {
             return false;
         };
 
@@ -451,82 +368,131 @@ pub const Config = struct {
             return false;
         }
 
-        self.content_buffer[count] = 0;
+        config.content_buffer[count] = 0;
 
-        const slice: [:0]const u8 = self.content_buffer[0..count :0];
+        const slice: [:0]const u8 = config.content_buffer[0..count :0];
 
-        self.parse(slice) catch {
+        config.parse(slice) catch {
             return false;
         };
 
-        self.is_loaded_from_file = true;
+        config.is_loaded_from_file = true;
 
         return true;
     }
 
-    fn parse_disabled_array(self: *Config, array: []const ZonCombination) !void {
+    fn parse_disabled_array(
+        array: []const ZonCombination,
+        target: *[disabled_count_max]Combination,
+    ) Error!u32 {
         const length: u32 = @intCast(array.len);
 
         if (length > disabled_count_max) {
             return Error.TooManyDisabled;
         }
 
-        self.disabled_count = 0;
+        var count: u32 = 0;
 
         for (array) |item| {
-            std.debug.assert(self.disabled_count < disabled_count_max);
+            assert(count < disabled_count_max);
 
             const combination = try parse_zon_combination(&item);
-            self.disabled_entry[self.disabled_count] = combination;
-            self.disabled_count += 1;
+
+            target[count] = combination;
+            count += 1;
         }
+
+        assert(count == length);
+
+        return count;
     }
 
-    fn parse_remap_array(self: *Config, array: []const ZonRemap) !void {
+    fn parse_remap_array(array: []const ZonRemap, target: *[remap_count_max]RemapRule) Error!u32 {
         const length: u32 = @intCast(array.len);
 
         if (length > remap_count_max) {
             return Error.TooManyRemap;
         }
 
-        self.remap_count = 0;
+        var count: u32 = 0;
 
         for (array) |item| {
-            std.debug.assert(self.remap_count < remap_count_max);
+            assert(count < remap_count_max);
 
             const from = try parse_zon_combination(&item.from);
             const to = try parse_zon_combination(&item.to);
 
-            self.remap_entry[self.remap_count] = .{ .from = from, .to = to };
-            self.remap_count += 1;
+            target[count] = .{ .from = from, .to = to };
+            count += 1;
         }
+
+        assert(count == length);
+
+        return count;
     }
 
-    fn to_zon_config(self: *Config) !ZonConfig {
-        const allocator = self.arena.allocator();
+    fn to_zon_config(config: *Config) !ZonConfig {
+        const arena = config.arena.allocator();
 
         return ZonConfig{
-            .is_keyboard_locked = self.is_keyboard_locked,
-            .is_mouse_locked = self.is_mouse_locked,
-            .show_notification = self.show_notification,
-            .lock = try shortcut_to_zon(allocator, &self.lock_shortcut),
-            .unlock = try shortcut_to_zon(allocator, &self.unlock_shortcut),
-            .remap = try self.build_zon_remap(allocator),
-            .disabled = try self.build_zon_disabled(allocator),
+            .is_keyboard_locked = config.is_keyboard_locked,
+            .is_mouse_locked = config.is_mouse_locked,
+            .show_notification = config.show_notification,
+            .lock = try shortcut_to_zon(arena, &config.lock_shortcut),
+            .unlock = try shortcut_to_zon(arena, &config.unlock_shortcut),
+            .remap = try config.build_zon_remap(arena),
+            .disabled = try config.build_zon_disabled(arena),
         };
     }
 
-    fn write_config_file(self: *Config, path: []const u8) void {
-        const file = std.Io.Dir.createFileAbsolute(self.io, path, .{}) catch {
+    fn build_zon_disabled(config: *Config, arena: Allocator) !?[]const ZonCombination {
+        if (config.disabled_count == 0) {
+            return null;
+        }
+
+        const slice = try arena.alloc(ZonCombination, config.disabled_count);
+
+        for (0..config.disabled_count) |index| {
+            assert(config.disabled_entry[index].is_valid());
+
+            slice[index] = try combination_to_zon(arena, &config.disabled_entry[index]);
+        }
+
+        return slice;
+    }
+
+    fn build_zon_remap(config: *Config, arena: Allocator) !?[]const ZonRemap {
+        if (config.remap_count == 0) {
+            return null;
+        }
+
+        const slice = try arena.alloc(ZonRemap, config.remap_count);
+
+        for (0..config.remap_count) |index| {
+            const entry = config.remap_entry[index];
+
+            assert(entry.is_valid());
+
+            slice[index] = .{
+                .from = try combination_to_zon(arena, &entry.from),
+                .to = try combination_to_zon(arena, &entry.to),
+            };
+        }
+
+        return slice;
+    }
+
+    fn write_config_file(config: *Config, path: []const u8) void {
+        const file = std.Io.Dir.createFileAbsolute(config.io, path, .{}) catch {
             return;
         };
 
-        defer file.close(self.io);
+        defer file.close(config.io);
 
         var buffer: [4096]u8 = undefined;
-        var writer = file.writer(self.io, &buffer);
+        var writer = file.writer(config.io, &buffer);
 
-        const zon = self.to_zon_config() catch {
+        const zon = config.to_zon_config() catch {
             return;
         };
 
@@ -534,14 +500,16 @@ pub const Config = struct {
             return;
         };
 
-        writer.interface.flush() catch {};
+        writer.interface.flush() catch {
+            return;
+        };
     }
 };
 
 fn default_lock_shortcut() Shortcut {
     const combination = Combination{
         .modifier_set = modifier.Set.from(.{ .ctrl = true, .alt = true }),
-        .value = 'L',
+        .value = .l,
     };
 
     return Shortcut{ .combination = combination };
@@ -555,32 +523,40 @@ fn default_unlock_shortcut() Shortcut {
     return Shortcut{ .sequence = sequence };
 }
 
-fn keycode_to_string(allocator: std.mem.Allocator, value: u8) !?[]const u8 {
-    std.debug.assert(keycode.is_valid(value));
+fn keycode_to_string(arena: Allocator, value: Keycode) !?[]const u8 {
+    assert(value != .silent);
 
-    if ((value >= 'A' and value <= 'Z') or (value >= '0' and value <= '9')) {
-        const buffer = try allocator.alloc(u8, 1);
-        buffer[0] = value;
+    if (value.to_char()) |character| {
+        const buffer = try arena.alloc(u8, 1);
+
+        buffer[0] = character;
+
         return buffer;
     }
 
-    return keycode.to_string(value);
+    return value.to_string();
 }
 
-fn combination_to_zon(allocator: std.mem.Allocator, combination: *const Combination) !ZonCombination {
-    std.debug.assert(combination.is_valid());
+fn combination_to_zon(
+    arena: Allocator,
+    combination: *const Combination,
+) !ZonCombination {
+    assert(combination.is_valid());
 
-    const string = try keycode_to_string(allocator, combination.value) orelse {
+    const string = try keycode_to_string(arena, combination.value) orelse {
         return Error.InvalidKey;
     };
 
     return ZonCombination{
-        .modifiers = try modifier_set_to_string(allocator, &combination.modifier_set),
+        .modifiers = try modifier_set_to_string(arena, &combination.modifier_set),
         .key = string,
     };
 }
 
-fn modifier_set_to_string(allocator: std.mem.Allocator, modifier_set: *const modifier.Set) !?[]const []const u8 {
+fn modifier_set_to_string(
+    arena: Allocator,
+    modifier_set: *const modifier.Set,
+) !?[]const []const u8 {
     const array = modifier_set.to_array();
     var count: u8 = 0;
 
@@ -594,7 +570,7 @@ fn modifier_set_to_string(allocator: std.mem.Allocator, modifier_set: *const mod
         return null;
     }
 
-    const result = try allocator.alloc([]const u8, count);
+    const result = try arena.alloc([]const u8, count);
     var result_index: u8 = 0;
 
     for (0..modifier.kind_count) |kind_index| {
@@ -607,7 +583,7 @@ fn modifier_set_to_string(allocator: std.mem.Allocator, modifier_set: *const mod
     return result;
 }
 
-fn parse_modifier_array(array: []const []const u8) !modifier.Set {
+fn parse_modifier_array(array: []const []const u8) Error!modifier.Set {
     var result = modifier.Set{};
 
     for (array) |item| {
@@ -619,9 +595,10 @@ fn parse_modifier_array(array: []const []const u8) !modifier.Set {
     return result;
 }
 
-fn parse_shortcut(shortcut: *const ZonShortcut) !Shortcut {
+fn parse_shortcut(shortcut: *const ZonShortcut) Error!Shortcut {
     if (shortcut.sequence) |sequence| {
         const parsed_sequence = try Sequence.init(sequence);
+
         return Shortcut{ .sequence = parsed_sequence };
     }
 
@@ -632,7 +609,7 @@ fn parse_shortcut(shortcut: *const ZonShortcut) !Shortcut {
     }
 
     if (shortcut.key) |string| {
-        combination.value = keycode.from_string(string) orelse {
+        combination.value = keycode.Keycode.from_string(string) orelse {
             return Error.InvalidKey;
         };
     } else {
@@ -642,35 +619,35 @@ fn parse_shortcut(shortcut: *const ZonShortcut) !Shortcut {
     return Shortcut{ .combination = combination };
 }
 
-fn parse_zon_combination(zon: *const ZonCombination) !Combination {
+fn parse_zon_combination(zon: *const ZonCombination) Error!Combination {
     var combination = Combination{};
 
     if (zon.modifiers) |array| {
         combination.modifier_set = try parse_modifier_array(array);
     }
 
-    combination.value = keycode.from_string(zon.key) orelse {
+    combination.value = keycode.Keycode.from_string(zon.key) orelse {
         return Error.InvalidKey;
     };
 
     return combination;
 }
 
-fn shortcut_to_zon(allocator: std.mem.Allocator, shortcut: *const Shortcut) !ZonShortcut {
+fn shortcut_to_zon(arena: Allocator, shortcut: *const Shortcut) !ZonShortcut {
     switch (shortcut.*) {
         .combination => |combination| {
-            std.debug.assert(combination.is_valid());
+            assert(combination.is_valid());
 
             return ZonShortcut{
-                .modifiers = try modifier_set_to_string(allocator, &combination.modifier_set),
-                .key = try keycode_to_string(allocator, combination.value),
+                .modifiers = try modifier_set_to_string(arena, &combination.modifier_set),
+                .key = try keycode_to_string(arena, combination.value),
             };
         },
         .sequence => |sequence| {
-            std.debug.assert(sequence.is_valid());
+            assert(sequence.is_valid());
 
             const slice = sequence.to_slice();
-            const copy = try allocator.alloc(u8, slice.len);
+            const copy = try arena.alloc(u8, slice.len);
 
             @memcpy(copy, slice);
 
@@ -679,4 +656,70 @@ fn shortcut_to_zon(allocator: std.mem.Allocator, shortcut: *const Shortcut) !Zon
             };
         },
     }
+}
+
+const testing = std.testing;
+
+test "a sequence uppercases and bounds its source" {
+    const sequence = try Sequence.init("unlock");
+
+    try testing.expect(sequence.is_valid());
+    try testing.expectEqualStrings("UNLOCK", sequence.to_slice());
+}
+
+test "a sequence rejects an empty or oversized source" {
+    const long = [_]u8{'a'} ** (Sequence.length_max + 1);
+
+    try testing.expectError(Error.InvalidKey, Sequence.init(""));
+    try testing.expectError(Error.SequenceTooLong, Sequence.init(&long));
+}
+
+test "a combination matches only its exact key and modifiers" {
+    const combination = Combination{
+        .modifier_set = modifier.Set.from(.{ .ctrl = true }),
+        .value = .l,
+    };
+
+    const exact = Key{
+        .value = .l,
+        .down = true,
+        .modifiers = modifier.Set.from(.{ .ctrl = true }),
+    };
+
+    const wrong_key = Key{
+        .value = .k,
+        .down = true,
+        .modifiers = modifier.Set.from(.{ .ctrl = true }),
+    };
+
+    const wrong_modifiers = Key{ .value = .l, .down = true };
+
+    try testing.expect(combination.match(&exact));
+    try testing.expect(!combination.match(&wrong_key));
+    try testing.expect(!combination.match(&wrong_modifiers));
+}
+
+test "parse_shortcut resolves keys, modifiers, and sequences" {
+    const combination = try parse_shortcut(&.{
+        .key = "l",
+        .modifiers = &.{ "ctrl", "alt" },
+    });
+
+    try testing.expectEqual(Keycode.l, combination.combination.value);
+    try testing.expect(combination.combination.modifier_set.ctrl());
+    try testing.expect(combination.combination.modifier_set.alt());
+
+    const sequence = try parse_shortcut(&.{ .sequence = "unlock" });
+
+    try testing.expectEqualStrings("UNLOCK", sequence.sequence.to_slice());
+
+    try testing.expectError(Error.InvalidKey, parse_shortcut(&.{}));
+}
+
+test "the default shortcuts are valid" {
+    const lock = default_lock_shortcut();
+    const unlock = default_unlock_shortcut();
+
+    try testing.expect(lock.combination.is_valid());
+    try testing.expect(unlock.sequence.is_valid());
 }

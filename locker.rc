@@ -1,7 +1,3 @@
-#define LOCK_ICON    101
-#define UNLOCK_ICON  102
-#define APP_ICON     1
+#define APP_ICON 1
 
-LOCK_ICON ICON "asset/lock.ico"
-UNLOCK_ICON ICON "asset/unlock.ico"
 APP_ICON ICON "asset/unlock.ico"

@@ -1,13 +1,29 @@
 const std = @import("std");
 
 const arc = @import("arc");
+const wisp = @import("wisp");
 
 const Application = @import("application.zig").Application;
-const path_util = @import("path.zig");
 
+const assert = std.debug.assert;
+
+const directory_name = "locker";
+const log_name = "locker.log";
 const log_size_max: u32 = 5 * 1024 * 1024;
+const path_bytes_max: u32 = 512;
 
-pub fn main() void {
+const exit_failure: u8 = 1;
+const exit_success: u8 = 0;
+
+comptime {
+    assert(directory_name.len > 0);
+    assert(log_name.len > 0);
+    assert(log_size_max > 0);
+    assert(path_bytes_max > log_name.len);
+    assert(exit_failure != exit_success);
+}
+
+pub fn main() u8 {
     var threaded: std.Io.Threaded = .init_single_threaded;
     const io = threaded.io();
 
@@ -15,17 +31,29 @@ pub fn main() void {
     defer if (rotating) |*writer| writer.deinit(io);
 
     var logger = init_logger(io, if (rotating) |*writer| writer else null);
-    defer if (logger) |*log| log.sync() catch {};
+    defer if (logger) |*log| flush(log);
 
     var application: Application = undefined;
-    application.init(io, if (logger) |*log| log else null);
+
+    application.init(io, if (logger) |*log| log else null) catch |err| {
+        report(if (logger) |*log| log else null, "Unable to initialise the application", err);
+
+        return exit_failure;
+    };
+
     defer application.deinit();
 
     if (logger) |*log| {
         log.info("Starting application", &.{}, @src());
     }
 
-    application.run();
+    application.run() catch |err| {
+        report(if (logger) |*log| log else null, "Unable to run the application", err);
+
+        return exit_failure;
+    };
+
+    return exit_success;
 }
 
 fn init_logger(io: std.Io, writer: ?*arc.RotatingWriter) ?arc.Logger {
@@ -44,28 +72,45 @@ fn init_logger(io: std.Io, writer: ?*arc.RotatingWriter) ?arc.Logger {
 }
 
 fn init_rotating(io: std.Io) ?arc.RotatingWriter {
-    var appdata_buffer: [path_util.path_length_max]u8 = undefined;
+    var directory_buffer: [path_bytes_max]u8 = undefined;
 
-    const base = path_util.get_appdata_path(&appdata_buffer, "locker") catch return null;
+    const directory = wisp.paths.state_dir(&directory_buffer, directory_name) catch {
+        return null;
+    };
 
-    var path_buffer: [path_util.path_length_max]u8 = undefined;
+    assert(directory.len > 0);
 
-    const log_path = path_util.join_path(&path_buffer, base, "locker.log") orelse return null;
+    std.Io.Dir.cwd().createDirPath(io, directory) catch {
+        return null;
+    };
 
-    path_util.ensure_directory_exists(io, log_path) catch return null;
+    var path_buffer: [path_bytes_max]u8 = undefined;
 
-    return arc.RotatingWriter.init(io, .{ .path = log_path, .size_max = log_size_max }) catch null;
+    const path = std.fmt.bufPrint(
+        &path_buffer,
+        "{s}{c}{s}",
+        .{ directory, std.fs.path.sep, log_name },
+    ) catch {
+        return null;
+    };
+
+    assert(path.len > directory.len);
+
+    return arc.RotatingWriter.init(io, .{ .path = path, .size_max = log_size_max }) catch {
+        return null;
+    };
 }
 
-test {
-    _ = @import("application.zig");
-    _ = @import("config.zig");
-    _ = @import("handler.zig");
-    _ = @import("icon.zig");
-    _ = @import("menu.zig");
-    _ = @import("notification.zig");
-    _ = @import("path.zig");
-    _ = @import("remap.zig");
-    _ = @import("settings.zig");
-    _ = @import("state.zig");
+fn flush(logger: *arc.Logger) void {
+    logger.sync() catch {
+        return;
+    };
+}
+
+fn report(logger: ?*arc.Logger, message: []const u8, err: anyerror) void {
+    assert(message.len > 0);
+
+    const log = logger orelse return;
+
+    log.@"error"(message, &.{arc.err_from(err)}, @src());
 }
