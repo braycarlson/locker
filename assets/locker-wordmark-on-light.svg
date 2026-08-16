@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 348 70" width="348" height="70" fill="#2E2C28" role="img" aria-label="locker">
+  <title>locker</title>
+  <path fill-rule="evenodd" d="M7 0H46A7 7 0 0 1 53 7V63A7 7 0 0 1 46 70H7A7 7 0 0 1 0 63V7A7 7 0 0 1 7 0ZM7 2H46A5 5 0 0 1 51 7V59A5 5 0 0 1 46 64H7A5 5 0 0 1 2 59V7A5 5 0 0 1 7 2Z"></path>
+  <text x="26.5" y="44.5" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="500" font-size="32">l</text>
+  <path fill-rule="evenodd" d="M66 0H105A7 7 0 0 1 112 7V63A7 7 0 0 1 105 70H66A7 7 0 0 1 59 63V7A7 7 0 0 1 66 0ZM66 2H105A5 5 0 0 1 110 7V59A5 5 0 0 1 105 64H66A5 5 0 0 1 61 59V7A5 5 0 0 1 66 2Z"></path>
+  <text x="85.5" y="44.5" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="500" font-size="32">o</text>
+  <path fill-rule="evenodd" d="M125 0H164A7 7 0 0 1 171 7V63A7 7 0 0 1 164 70H125A7 7 0 0 1 118 63V7A7 7 0 0 1 125 0ZM125 2H164A5 5 0 0 1 169 7V59A5 5 0 0 1 164 64H125A5 5 0 0 1 120 59V7A5 5 0 0 1 125 2Z"></path>
+  <text x="144.5" y="44.5" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="500" font-size="32">c</text>
+  <path fill-rule="evenodd" d="M184 0H223A7 7 0 0 1 230 7V63A7 7 0 0 1 223 70H184A7 7 0 0 1 177 63V7A7 7 0 0 1 184 0ZM184 2H223A5 5 0 0 1 228 7V59A5 5 0 0 1 223 64H184A5 5 0 0 1 179 59V7A5 5 0 0 1 184 2Z"></path>
+  <text x="203.5" y="44.5" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="500" font-size="32">k</text>
+  <path fill-rule="evenodd" d="M243 0H282A7 7 0 0 1 289 7V63A7 7 0 0 1 282 70H243A7 7 0 0 1 236 63V7A7 7 0 0 1 243 0ZM243 2H282A5 5 0 0 1 287 7V59A5 5 0 0 1 282 64H243A5 5 0 0 1 238 59V7A5 5 0 0 1 243 2Z"></path>
+  <text x="262.5" y="44.5" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="500" font-size="32">e</text>
+  <path fill-rule="evenodd" d="M302 0H341A7 7 0 0 1 348 7V63A7 7 0 0 1 341 70H302A7 7 0 0 1 295 63V7A7 7 0 0 1 302 0ZM302 2H341A5 5 0 0 1 346 7V59A5 5 0 0 1 341 64H302A5 5 0 0 1 297 59V7A5 5 0 0 1 302 2Z"></path>
+  <text x="321.5" y="44.5" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="500" font-size="32">r</text>
+</svg>

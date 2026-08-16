@@ -4,7 +4,7 @@
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x1e067dc034737415,
     .paths = .{
-        "asset",
+        "assets",
         "locker.rc",
         "src",
         "build.zig",

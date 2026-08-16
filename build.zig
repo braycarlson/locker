@@ -207,11 +207,11 @@ fn create_module_from(
     module.addImport("wisp", wisp.module("wisp"));
 
     module.addAnonymousImport("lock.rgba", .{
-        .root_source_file = builder.path("asset/lock.rgba"),
+        .root_source_file = builder.path("assets/lock.rgba"),
     });
 
     module.addAnonymousImport("unlock.rgba", .{
-        .root_source_file = builder.path("asset/unlock.rgba"),
+        .root_source_file = builder.path("assets/unlock.rgba"),
     });
 
     return module;
