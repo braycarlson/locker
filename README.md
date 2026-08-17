@@ -41,13 +41,13 @@ device, so the keyboard and mouse stay attached and the unlock path keeps workin
 Each tagged release carries a Linux and a Windows build.
 
 The build from source looks for [nimble](https://github.com/braycarlson/nimble) and
-[wisp](https://github.com/braycarlson/wisp) in the same parent directory, since
+[umbra](https://github.com/braycarlson/umbra) in the same parent directory, since
 `build.zig.zon` points at them by relative path. It fetches
 [arc](https://github.com/braycarlson/arc) by URL.
 
 ```
 git clone https://github.com/braycarlson/nimble
-git clone https://github.com/braycarlson/wisp
+git clone https://github.com/braycarlson/umbra
 git clone https://github.com/braycarlson/locker
 cd locker
 zig build -Doptimize=ReleaseSafe

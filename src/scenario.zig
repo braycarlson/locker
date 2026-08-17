@@ -1,14 +1,14 @@
 const std = @import("std");
 
 const nimble = @import("nimble");
-const wisp = @import("wisp");
+const umbra = @import("umbra");
 
 const Application = @import("application.zig").Application;
 const constant = @import("constant.zig");
 const State = @import("state.zig").State;
 
-const Event = wisp.Event;
-const Response = wisp.Response;
+const Event = umbra.Event;
+const Response = umbra.Response;
 
 const testing = std.testing;
 

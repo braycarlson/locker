@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const nimble = @import("nimble");
-const wisp = @import("wisp");
+const umbra = @import("umbra");
 
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
@@ -322,7 +322,7 @@ pub const Config = struct {
     fn load_config_path(config: *Config) bool {
         var buffer: [path_length_max]u8 = undefined;
 
-        const base = wisp.paths.config_dir(&buffer, "locker") catch {
+        const base = umbra.paths.config_dir(&buffer, "locker") catch {
             return false;
         };
 

@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const arc = @import("arc");
-const wisp = @import("wisp");
+const umbra = @import("umbra");
 
 const Application = @import("application.zig").Application;
 
@@ -74,7 +74,7 @@ fn init_logger(io: std.Io, writer: ?*arc.RotatingWriter) ?arc.Logger {
 fn init_rotating(io: std.Io) ?arc.RotatingWriter {
     var directory_buffer: [path_bytes_max]u8 = undefined;
 
-    const directory = wisp.paths.state_dir(&directory_buffer, directory_name) catch {
+    const directory = umbra.paths.state_dir(&directory_buffer, directory_name) catch {
         return null;
     };
 

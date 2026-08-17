@@ -1,12 +1,12 @@
 const std = @import("std");
 
-const wisp = @import("wisp");
+const umbra = @import("umbra");
 
 const State = @import("state.zig").State;
 
 const assert = std.debug.assert;
 
-const App = wisp.App;
+const App = umbra.App;
 
 pub const title = "Peripheral Locker";
 

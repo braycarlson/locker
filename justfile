@@ -70,7 +70,7 @@ run-timed seconds="30": build
 # one of those aliases every edge and flattens the artwork to its palette. The
 # frame is already 32x32, so it is copied out without a resize. src/icon.zig
 # moves the alpha channel to the front at comptime, because that is the ARGB
-# order wisp ships to both backends.
+# order umbra ships to both backends.
 #
 # Regenerate the tray pixmaps from the icon sources
 [unix]

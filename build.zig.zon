@@ -18,8 +18,8 @@
         .nimble = .{
             .path = "../nimble",
         },
-        .wisp = .{
-            .path = "../wisp",
+        .umbra = .{
+            .path = "../umbra",
         },
     },
 }

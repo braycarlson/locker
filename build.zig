@@ -190,7 +190,7 @@ fn create_module_from(
         .backend = backend,
     });
 
-    const wisp = builder.dependency("wisp", .{
+    const umbra = builder.dependency("umbra", .{
         .target = context.target,
         .optimize = context.optimize,
         .backend = backend,
@@ -204,7 +204,7 @@ fn create_module_from(
 
     module.addImport("arc", arc.module("arc"));
     module.addImport("nimble", nimble.module("nimble"));
-    module.addImport("wisp", wisp.module("wisp"));
+    module.addImport("umbra", umbra.module("umbra"));
 
     module.addAnonymousImport("lock.rgba", .{
         .root_source_file = builder.path("assets/lock.rgba"),

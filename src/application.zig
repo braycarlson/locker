@@ -2,7 +2,7 @@ const std = @import("std");
 
 const arc = @import("arc");
 const nimble = @import("nimble");
-const wisp = @import("wisp");
+const umbra = @import("umbra");
 
 const Config = @import("config.zig").Config;
 const constant = @import("constant.zig");
@@ -17,7 +17,7 @@ const State = @import("state.zig").State;
 
 const assert = std.debug.assert;
 
-const App = wisp.App;
+const App = umbra.App;
 const Key = nimble.Key;
 const Keycode = nimble.Keycode;
 const Logger = arc.Logger;
@@ -462,21 +462,21 @@ pub const Application = struct {
 };
 
 fn on_lock_trigger(_: ?*anyopaque, _: ?*const Key) void {
-    _ = wisp.loop.post(constant.Message.lock);
+    _ = umbra.loop.post(constant.Message.lock);
 }
 
 fn on_unlock_trigger(_: ?*anyopaque, _: ?*const Key) void {
-    _ = wisp.loop.post(constant.Message.unlock);
+    _ = umbra.loop.post(constant.Message.unlock);
 }
 
 fn rescue_release_callback(_: ?*anyopaque) void {
-    _ = wisp.loop.post(constant.Message.rescue);
+    _ = umbra.loop.post(constant.Message.rescue);
 }
 
 fn on_config_file_changed(context: ?*anyopaque) void {
     assert(context != null);
 
-    _ = wisp.loop.post(constant.Message.config_reload);
+    _ = umbra.loop.post(constant.Message.config_reload);
 }
 
 fn remap_filter_callback(context: ?*anyopaque, key: *const Key) Response {

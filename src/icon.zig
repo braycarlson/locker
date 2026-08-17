@@ -1,16 +1,16 @@
 const std = @import("std");
 
-const wisp = @import("wisp");
+const umbra = @import("umbra");
 
 const constant = @import("constant.zig");
 const State = @import("state.zig").State;
 
 const assert = std.debug.assert;
 
-const App = wisp.App;
-const IconBuilder = wisp.IconBuilder;
-const IconError = wisp.IconError;
-const IconPixmap = wisp.IconPixmap;
+const App = umbra.App;
+const IconBuilder = umbra.IconBuilder;
+const IconError = umbra.IconError;
+const IconPixmap = umbra.IconPixmap;
 
 pub const channel_count: u32 = 4;
 pub const pixmap_bytes: u32 = constant.Icon.dimension * constant.Icon.dimension * channel_count;

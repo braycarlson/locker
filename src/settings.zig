@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const arc = @import("arc");
-const wisp = @import("wisp");
+const umbra = @import("umbra");
 
 const Config = @import("config.zig").Config;
 
@@ -12,7 +12,7 @@ const Logger = arc.Logger;
 pub const SettingsManager = struct {
     configuration: *Config,
     logger: ?*Logger,
-    watch_handle: ?wisp.watcher.Handle,
+    watch_handle: ?umbra.watcher.Handle,
 
     pub fn init(configuration: *Config, logger: ?*Logger) SettingsManager {
         return SettingsManager{
@@ -25,7 +25,7 @@ pub const SettingsManager = struct {
     pub fn deinit(manager: *SettingsManager) void {
         const handle = manager.watch_handle orelse return;
 
-        wisp.watcher.unwatch(handle);
+        umbra.watcher.unwatch(handle);
 
         manager.watch_handle = null;
 
@@ -37,7 +37,7 @@ pub const SettingsManager = struct {
 
         manager.log("Opening settings file");
 
-        wisp.shell.open(path) catch {
+        umbra.shell.open(path) catch {
             manager.log("Unable to open the settings file");
 
             return;
@@ -59,14 +59,14 @@ pub const SettingsManager = struct {
 
     pub fn watch(
         manager: *SettingsManager,
-        callback: wisp.watcher.Callback,
+        callback: umbra.watcher.Callback,
         context: ?*anyopaque,
     ) void {
         assert(manager.watch_handle == null);
 
         const path = manager.configuration.get_config_path() orelse return;
 
-        manager.watch_handle = wisp.watcher.watch(path, callback, context) catch {
+        manager.watch_handle = umbra.watcher.watch(path, callback, context) catch {
             manager.log("Unable to watch the settings file");
 
             return;
