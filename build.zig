@@ -19,7 +19,8 @@ const Steps = struct {
 
 const Context = struct {
     builder: *std.Build,
-    optimize: std.builtin.OptimizeMode,
+    filters: []const []const u8,
+    optimize: std.lang.Optimize,
     steps: Steps,
     target: std.Build.ResolvedTarget,
 };
@@ -28,8 +29,15 @@ pub fn build(builder: *std.Build) void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
+    const filters = builder.option(
+        []const []const u8,
+        "test-filter",
+        "Skip tests that do not match any filter",
+    ) orelse &.{};
+
     const context = Context{
         .builder = builder,
+        .filters = filters,
         .optimize = optimize,
         .steps = .{
             .check = builder.step("check", "Compile every artifact without running it"),
@@ -81,7 +89,7 @@ fn add_unit_tests(context: Context) void {
 
     const unit = builder.addTest(.{
         .root_module = module,
-        .filters = builder.args orelse &.{},
+        .filters = context.filters,
     });
 
     const run = builder.addRunArtifact(unit);
@@ -99,7 +107,7 @@ fn add_mock_tests(context: Context) void {
 
     const unit = builder.addTest(.{
         .root_module = module,
-        .filters = builder.args orelse &.{},
+        .filters = context.filters,
     });
 
     const run = builder.addRunArtifact(unit);
@@ -142,7 +150,7 @@ fn add_format(context: Context) void {
     const builder = context.builder;
 
     const format = builder.addFmt(.{
-        .paths = &format_paths,
+        .paths = builder.pathList(&format_paths),
         .check = true,
     });
 
@@ -161,9 +169,30 @@ fn add_windows_resource(
         return;
     }
 
-    exe.subsystem = .Windows;
+    exe.subsystem = .windows;
 
-    module.addWin32ResourceFile(.{ .file = context.builder.path("locker.rc") });
+    const builder = context.builder;
+    const resource = std.Build.Step.Run.create(builder, "zig rc locker.rc");
+
+    resource.addFileArg2(.zig_exe, .{});
+
+    resource.addArgs(&.{
+        "rc",
+        "/:auto-includes",
+        "any",
+        "/:output-format",
+        "coff",
+        "/:target",
+        @tagName(context.target.result.cpu.arch),
+        "--",
+    });
+
+    resource.addFileArg2(builder.path("locker.rc"), .{});
+    resource.addFileInput(builder.path("assets/unlock.ico"));
+
+    const object = resource.addOutputFileArg2("locker.obj", .{});
+
+    module.addObjectFile(object);
 }
 
 fn create_module(context: Context, backend: Backend) *std.Build.Module {

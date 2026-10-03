@@ -34,15 +34,15 @@ test:
 
 # Run the colocated unit tests and the tidy law, optionally filtered: just unit tidy
 unit filter="":
-    zig build test:unit --summary all -- {{filter}}
+    zig build test:unit --summary all {{ if filter == "" { "" } else { "-Dtest-filter=" + filter } }}
 
 # Run the end to end tests against the mock backends, optionally filtered
 mock filter="":
-    zig build test:mock --summary all -- {{filter}}
+    zig build test:mock --summary all {{ if filter == "" { "" } else { "-Dtest-filter=" + filter } }}
 
 # Run the tidy check on its own
 tidy:
-    zig build test:unit -- tidy
+    zig build test:unit -Dtest-filter=tidy
 
 # Check that every source file is formatted
 fmt:
@@ -75,16 +75,16 @@ run-timed seconds="30": build
 # Regenerate the tray pixmaps from the icon sources
 [unix]
 icons:
-    convert 'asset/lock.ico[12]' -depth 8 rgba:asset/lock.rgba
-    convert 'asset/unlock.ico[12]' -depth 8 rgba:asset/unlock.rgba
+    convert 'assets/lock.ico[12]' -depth 8 rgba:assets/lock.rgba
+    convert 'assets/unlock.ico[12]' -depth 8 rgba:assets/unlock.rgba
 
 # Build with release safety checks
 release:
-    zig build -Doptimize=ReleaseSafe
+    zig build --release=safe
 
 # Build the smallest release binary
 release-small:
-    zig build -Doptimize=ReleaseSmall
+    zig build --release=small
 
 # Clean build artifacts
 [unix]

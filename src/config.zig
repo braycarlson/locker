@@ -47,7 +47,7 @@ pub const Combination = struct {
 pub const Sequence = struct {
     pub const length_max: u32 = 32;
 
-    data: [length_max]u8 = [_]u8{0} ** length_max,
+    data: [length_max]u8 = @splat(0),
     length: u32 = 0,
 
     pub fn init(source: []const u8) Error!Sequence {
@@ -131,11 +131,11 @@ pub const Config = struct {
 
     arena: std.heap.FixedBufferAllocator = undefined,
     arena_buffer: *[arena_size]u8 = undefined,
-    config_path: [path_length_max]u8 = [_]u8{0} ** path_length_max,
+    config_path: [path_length_max]u8 = @splat(0),
     config_path_length: u32 = 0,
     content_buffer: *[content_length_max + 1]u8 = undefined,
     disabled_count: u32 = 0,
-    disabled_entry: [disabled_count_max]Combination = [_]Combination{.{}} ** disabled_count_max,
+    disabled_entry: [disabled_count_max]Combination = @splat(.{}),
     io: std.Io,
     is_keyboard_locked: bool = true,
     is_loaded_from_file: bool = false,
@@ -242,14 +242,14 @@ pub const Config = struct {
         config.arena.reset();
 
         const arena = config.arena.allocator();
+        var diagnostics: std.zon.parse.Diagnostics = undefined;
 
-        const parsed = std.zon.parse.fromSliceAlloc(
-            ZonConfig,
-            arena,
-            content,
-            null,
-            .{},
-        ) catch {
+        const parsed = std.zon.parse.fromSlice(ZonConfig, .{
+            .gpa = arena,
+            .arena = arena,
+            .source = content,
+            .diagnostics = &diagnostics,
+        }) catch {
             return Error.ParseError;
         };
 
@@ -310,7 +310,7 @@ pub const Config = struct {
         }
 
         const path = config.config_path[0..config.config_path_length];
-        const directory = std.fs.path.dirname(path) orelse return;
+        const directory = std.Io.Dir.path.dirname(path) orelse return;
 
         std.Io.Dir.cwd().createDirPath(config.io, directory) catch {
             return;
@@ -326,10 +326,10 @@ pub const Config = struct {
             return false;
         };
 
-        const full_path = std.fmt.bufPrint(
+        const full_path = std.mem.print(
             &config.config_path,
             "{s}{c}{s}",
-            .{ base, std.fs.path.sep, "config.zon" },
+            .{ base, std.Io.Dir.path.sep, "config.zon" },
         ) catch {
             return false;
         };
@@ -668,7 +668,7 @@ test "a sequence uppercases and bounds its source" {
 }
 
 test "a sequence rejects an empty or oversized source" {
-    const long = [_]u8{'a'} ** (Sequence.length_max + 1);
+    const long: [Sequence.length_max + 1]u8 = @splat('a');
 
     try testing.expectError(Error.InvalidKey, Sequence.init(""));
     try testing.expectError(Error.SequenceTooLong, Sequence.init(&long));

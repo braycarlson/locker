@@ -362,9 +362,9 @@ pub const Application = struct {
         const win = modifier.Set.from(.{ .win = true });
 
         const patterns = [_]Pattern{
-            .{ .key = @intFromEnum(Keycode.super), .match_any_modifiers = 1 },
-            .{ .key = @intFromEnum(Keycode.super_left), .match_any_modifiers = 1 },
-            .{ .key = @intFromEnum(Keycode.super_right), .match_any_modifiers = 1 },
+            .{ .key = @backingInt(Keycode.super), .match_any_modifiers = 1 },
+            .{ .key = @backingInt(Keycode.super_left), .match_any_modifiers = 1 },
+            .{ .key = @backingInt(Keycode.super_right), .match_any_modifiers = 1 },
             .{
                 .modifiers = @intCast(win.flags),
                 .match_any_modifiers = 1,

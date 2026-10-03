@@ -14,7 +14,7 @@
 
 <p align="center">
     <a href="https://github.com/braycarlson/locker/actions/workflows/ci.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/braycarlson/locker/ci.yml?branch=main&amp;style=flat-square&amp;label=ci"></a>
-    <a href="https://ziglang.org"><img alt="zig" src="https://img.shields.io/badge/zig-0.16.0-orange.svg?style=flat-square"></a>
+    <a href="https://ziglang.org"><img alt="zig" src="https://img.shields.io/badge/zig-0.17.0-orange.svg?style=flat-square"></a>
     <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square"></a>
 </p>
 
@@ -40,20 +40,21 @@ device, so the keyboard and mouse stay attached and the unlock path keeps workin
 
 Each tagged release carries a Linux and a Windows build.
 
-The build from source looks for [nimble](https://github.com/braycarlson/nimble) and
+The build from source looks for [arc](https://github.com/braycarlson/arc),
+[nimble](https://github.com/braycarlson/nimble), and
 [umbra](https://github.com/braycarlson/umbra) in the same parent directory, since
-`build.zig.zon` points at them by relative path. It fetches
-[arc](https://github.com/braycarlson/arc) by URL.
+`build.zig.zon` points at them by relative path.
 
 ```
+git clone https://github.com/braycarlson/arc
 git clone https://github.com/braycarlson/nimble
 git clone https://github.com/braycarlson/umbra
 git clone https://github.com/braycarlson/locker
 cd locker
-zig build -Doptimize=ReleaseSafe
+zig build --release=safe
 ```
 
-The binary lands in `zig-out/bin`. locker requires Zig 0.16.0.
+The binary lands in `zig-out/bin`. locker requires Zig 0.17.0.
 
 ## Usage
 
