@@ -1,0 +1,28 @@
+.{
+    .name = .locker,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.17.0",
+    .fingerprint = 0x1e067dc034737415,
+    .paths = .{
+        "assets",
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+        "locker.rc",
+        "src",
+    },
+    .dependencies = .{
+        .arc = .{
+            .path = "../arc",
+        },
+        .nimble = .{
+            .path = "../nimble",
+        },
+        .toml = .{
+            .path = "../toml-zig",
+        },
+        .umbra = .{
+            .path = "../umbra",
+        },
+    },
+}
