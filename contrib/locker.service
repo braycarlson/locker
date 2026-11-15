@@ -1,0 +1,14 @@
+[Unit]
+Description=locker (peripheral locker, nimble client)
+Requires=nimbled.service
+After=nimbled.service graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/locker
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

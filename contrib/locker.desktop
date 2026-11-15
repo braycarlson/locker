@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Locker
+Comment=Peripheral locker
+Keywords=keyboard;mouse;
+Exec=systemctl --user start locker.service
+Icon=locker
+Terminal=false
